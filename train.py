@@ -21,7 +21,172 @@ def folder_check(folder_path):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
 
+# def train(model, dataloader, device, optimizer, criterion):
 
+#     model.train()
+#     running_loss = 0
+#     counter = 0
+    
+#     for idx, (images, (seg_true, line_true)) in tqdm(enumerate(dataloader), 
+#                                                     desc="Training loop", 
+#                                                     total=len(dataloader)):
+#         counter += 1
+#         images = images.to(device)
+#         seg_true = seg_true.to(device)
+#         line_true = line_true.to(device)
+        
+#         optimizer.zero_grad()
+#         seg_pred, line_pred = model(images)
+#         loss = criterion((seg_pred, line_pred), (seg_true, line_true))
+        
+#         loss.backward()
+#         running_loss += loss.item()
+#         optimizer.step()
+    
+#     training_loss = running_loss / counter
+#     return training_loss
+# def train(model, dataloader, device, optimizer, criterion):
+#     model.train()
+#     running_loss = 0
+#     counter = 0
+    
+#     for idx, (images, (seg_true, line_true)) in tqdm(enumerate(dataloader), 
+#                                                     desc="Training loop", 
+#                                                     total=len(dataloader)):
+#         counter += 1
+#         images = images.to(device)
+#         seg_true = seg_true.to(device)
+#         line_true = line_true.to(device)
+        
+#         # Add debug information
+#         print(f"Images shape: {images.shape}, type: {type(images)}")
+#         print(f"Seg_true shape: {seg_true.shape}, type: {type(seg_true)}")
+        
+#         optimizer.zero_grad()
+#         seg_pred, line_pred = model(images)
+        
+#         # Add debug information
+#         print(f"Seg_pred shape: {seg_pred.shape}, type: {type(seg_pred)}")
+        
+#         # Try to catch the error before it happens
+#         if not isinstance(seg_pred, torch.Tensor):
+#             print(f"ERROR: seg_pred is not a tensor: {type(seg_pred)}")
+#             continue
+            
+#         loss = criterion((seg_pred, line_pred), (seg_true, line_true))
+        
+#         loss.backward()
+#         running_loss += loss.item()
+#         optimizer.step()
+    
+#     training_loss = running_loss / counter
+#     return training_loss
+# def train(model, dataloader, device, optimizer, criterion):
+#     model.train()
+#     running_loss = 0
+#     counter = 0
+    
+#     for idx, (images, (seg_true, line_true)) in tqdm(enumerate(dataloader), 
+#                                                     desc="Training loop", 
+#                                                     total=len(dataloader)):
+#         counter += 1
+#         images = images.to(device)
+#         seg_true = seg_true.to(device)
+#         line_true = line_true.to(device)
+        
+#         # Add debug information
+#         print(f"Images shape: {images.shape}, type: {type(images)}")
+#         print(f"Seg_true shape: {seg_true.shape}, type: {type(seg_true)}")
+        
+#         optimizer.zero_grad()
+#         outputs = model(images)
+        
+#         # Debug the model output
+#         print(f"Model output type: {type(outputs)}")
+#         if isinstance(outputs, tuple):
+#             print(f"Output is a tuple of length {len(outputs)}")
+#             for i, out in enumerate(outputs):
+#                 print(f"  Output[{i}] type: {type(out)}")
+#                 if hasattr(out, 'shape'):
+#                     print(f"  Output[{i}] shape: {out.shape}")
+#                 else:
+#                     print(f"  Output[{i}] value: {out}")
+        
+#         # Extract seg_pred and line_pred safely
+#         if isinstance(outputs, tuple) and len(outputs) >= 2:
+#             seg_pred, line_pred = outputs
+#         else:
+#             print("ERROR: Model output is not in expected format")
+#             continue
+            
+#         # Check seg_pred specifically
+#         if not isinstance(seg_pred, torch.Tensor):
+#             print(f"ERROR: seg_pred is not a tensor: {type(seg_pred)}")
+#             if isinstance(seg_pred, str):
+#                 print(f"seg_pred string value: {seg_pred}")
+#             continue
+            
+#         loss = criterion((seg_pred, line_pred), (seg_true, line_true))
+        
+#         loss.backward()
+#         running_loss += loss.item()
+#         optimizer.step()
+    
+#     training_loss = running_loss / counter if counter > 0 else float('inf')
+#     return training_loss
+# def train(model, dataloader, device, optimizer, criterion):
+#     model.train()
+#     running_loss = 0
+#     counter = 0
+    
+#     for idx, (images, (seg_true, line_true)) in tqdm(enumerate(dataloader), 
+#                                                     desc="Training loop", 
+#                                                     total=len(dataloader)):
+#         counter += 1
+#         images = images.to(device)
+#         seg_true = seg_true.to(device)
+#         line_true = line_true.to(device)
+        
+#         # Add debug information
+#         print(f"Images shape: {images.shape}, type: {type(images)}")
+#         print(f"Seg_true shape: {seg_true.shape}, type: {type(seg_true)}")
+        
+#         optimizer.zero_grad()
+#         outputs = model(images)
+        
+#         # Debug the model output
+#         print(f"Model output type: {type(outputs)}")
+#         if isinstance(outputs, tuple):
+#             print(f"Output is a tuple of length {len(outputs)}")
+#             for i, out in enumerate(outputs):
+#                 print(f"  Output[{i}] type: {type(out)}")
+#                 if hasattr(out, 'shape'):
+#                     print(f"  Output[{i}] shape: {out.shape}")
+#                 else:
+#                     print(f"  Output[{i}] value: {out}")
+        
+#         # Extract seg_pred and line_pred safely
+#         if isinstance(outputs, tuple) and len(outputs) >= 2:
+#             seg_pred, line_pred = outputs
+#         else:
+#             print("ERROR: Model output is not in expected format")
+#             continue
+            
+#         # Check seg_pred specifically
+#         if not isinstance(seg_pred, torch.Tensor):
+#             print(f"ERROR: seg_pred is not a tensor: {type(seg_pred)}")
+#             if isinstance(seg_pred, str):
+#                 print(f"seg_pred string value: {seg_pred}")
+#             continue
+            
+#         loss = criterion((seg_pred, line_pred), (seg_true, line_true))
+        
+#         loss.backward()
+#         running_loss += loss.item()
+#         optimizer.step()
+    
+#     training_loss = running_loss / counter if counter > 0 else float('inf')
+#     return training_loss
 def train(model, dataloader, device, optimizer, criterion):
     model.train()
     running_loss = 0
@@ -29,7 +194,7 @@ def train(model, dataloader, device, optimizer, criterion):
     
     for idx, (images, (seg_true, line_true)) in tqdm(enumerate(dataloader), 
                                                     desc="Training loop", 
-                                                    total=len(dataloader)):
+                                                    total=len(dataloader)/BATCH_SIZE):
         counter += 1
         images = images.to(device)
         seg_true = seg_true.to(device)
@@ -81,7 +246,28 @@ def train(model, dataloader, device, optimizer, criterion):
     training_loss = running_loss / counter if counter > 0 else float('inf')
     print("training loss",training_loss)
     return training_loss
+# def eval(model, dataloader, device, criterion):
 
+#     model.eval()
+#     running_loss = 0
+#     counter = 0
+    
+#     with torch.no_grad():
+#         for idx, (images, (seg_true, line_true)) in tqdm(enumerate(dataloader), 
+#                                                         desc="Validation loop", 
+#                                                         total=len(dataloader)):
+#             counter += 1
+#             images = images.to(device)
+#             seg_true = seg_true.to(device)
+#             line_true = line_true.to(device)
+            
+#             seg_pred, line_pred = model(images)
+#             loss = criterion((seg_pred, line_pred), (seg_true, line_true))
+            
+#             running_loss += loss.item()
+    
+#     validation_loss = running_loss / counter
+#     return validation_loss
 def eval(model, dataloader, device, criterion):
     model.eval()
     running_loss = 0
@@ -90,13 +276,13 @@ def eval(model, dataloader, device, criterion):
     with torch.no_grad():
         for idx, (images, (seg_true, line_true)) in tqdm(enumerate(dataloader), 
                                                         desc="Validation loop", 
-                                                        total=len(dataloader)):
+                                                        total=len(dataloader)/BATCH_SIZE):
             counter += 1
             images = images.to(device)
             seg_true = seg_true.to(device)
             line_true = line_true.to(device)
             
-            # to dealinf with dictionary kind of output
+            # Get model output (now handling dictionary return type)
             model_output = model(images)
             
             # Extract outputs
@@ -171,7 +357,165 @@ def loss_plot(train_loss, valid_loss):
     plt.savefig('runway_segmentation_loss.png')
     plt.close()
 
+def evaluate_tp_tn_rate(model, val_loader, device, threshold=0.1):
+    """
+    Evaluate the segmentation performance with TP+TN rate as described in the paper.
+    This calculates the rate of correctly classified pixels (both true positives and true negatives).
+    """
+    model.eval()
+    
+    # Define class names for printing results
+    class_names = ["Background", "Runway Area", "Aiming Point Marking", "Threshold Marking"]
+    
+    # Initialize counters for each class
+    class_stats = {cls: {'total_pixels': 0, 'correct_pixels': 0} for cls in range(NUM_SEG_CLASSES)}
+    
+    # For line detection if applicable
+    line_stats = {cls: {'total_samples': 0, 'correct_samples': 0} for cls in range(NUM_LINE_CLASSES)} if NUM_LINE_CLASSES > 0 else {}
+    
+    with torch.no_grad():
+        # Process segmentation metrics
+        for images, (seg_true, line_true) in tqdm(val_loader, desc="Evaluating TP+TN Rate"):
+            images = images.to(device)
+            seg_true = seg_true.to(device)
+            
+            # Get model predictions
+            seg_pred, line_pred = model(images)
+            
+            # Process segmentation predictions
+            seg_pred = F.softmax(seg_pred, dim=1)
+            seg_pred_classes = torch.argmax(seg_pred, dim=1)
+            
+            # Calculate TP+TN for each class in the batch
+            # batch_size = images.size(0)
+            
+            # for i in range(batch_size):
+            for cls in range(NUM_SEG_CLASSES):
+                    # Getting binary masks for this class  we could have used the rle also inplace of this
+                    true_mask = (seg_true[i] == cls)
+                    pred_mask = (seg_pred_classes[i] == cls)
+                    
+                    # Calculating TP (correctly predicted class pixels)
+                    tp = torch.logical_and(true_mask, pred_mask).sum().item()
+                    
+                    # Calculating  TN (correctly predicted non-class pixels)
+                    tn = torch.logical_and(~true_mask, ~pred_mask).sum().item()
+                    
+                  
+                    class_stats[cls]['total_pixels'] += true_mask.numel()
+                    class_stats[cls]['correct_pixels'] += (tp + tn)
+            
+            # Process line predictions if applicable and if line_true is provided
+            # if NUM_LINE_CLASSES > 0 and line_true is not None:
+            #     # Threshold the line probability maps
+            #     for cls in range(NUM_LINE_CLASSES):
+            #         for i in range(batch_size):
+            #             # Check if line exists (max value exceeds threshold)
+            #             if hasattr(line_true[i, cls], 'max'):  # Check if it's a tensor
+            #                 ground_truth_line = line_true[i, cls].max() > threshold
+            #                 line_detected = line_pred[i, cls].max() > threshold
+                            
+            #                 line_stats[cls]['total_samples'] += 1
+                            
+            #                 # Count TP and TN
+            #                 if (line_detected and ground_truth_line) or (not line_detected and not ground_truth_line):
+            #                     line_stats[cls]['correct_samples'] += 1
+    
+    # Calculate TP+TN rates for segmentation
+    class_tp_tn_rates = {}
+    for cls in range(NUM_SEG_CLASSES):
+        if class_stats[cls]['total_pixels'] > 0:
+            tp_tn_rate = class_stats[cls]['correct_pixels'] / class_stats[cls]['total_pixels']
+            class_tp_tn_rates[cls] = tp_tn_rate
+    
+    # Calculate TP+TN rates for line detection not required
+    # line_tp_tn_rates = {}
+    # if NUM_LINE_CLASSES > 0:
+    #     line_class_names = ["Left Edge", "Center Line", "Right Edge", "Aiming Point", "Threshold"]
+    #     for cls in range(NUM_LINE_CLASSES):
+    #         if cls in line_stats and line_stats[cls]['total_samples'] > 0:
+    #             tp_tn_rate = line_stats[cls]['correct_samples'] / line_stats[cls]['total_samples']
+    #             line_tp_tn_rates[cls] = tp_tn_rate
+    
+    # Print results
+    print("\nSegmentation TP+TN Rates:")
+    for cls in range(NUM_SEG_CLASSES):
+        if cls in class_tp_tn_rates:
+            print(f"{class_names[cls]}: {class_tp_tn_rates[cls]:.4f}")
+    
+    # if NUM_LINE_CLASSES > 0 and line_tp_tn_rates:
+    #     print("\nLine Detection TP+TN Rates:")
+    #     for cls in range(NUM_LINE_CLASSES):
+    #         if cls in line_tp_tn_rates:
+    #             line_name = line_class_names[cls] if cls < len(line_class_names) else f"Line {cls}"
+    #             print(f"{line_name}: {line_tp_tn_rates[cls]:.4f}")
+    
+    # Calculate overall rates
+    overall_seg_tp_tn_rate = sum(class_tp_tn_rates.values()) / len(class_tp_tn_rates) if class_tp_tn_rates else 0
+    # overall_line_tp_tn_rate = sum(line_tp_tn_rates.values()) / len(line_tp_tn_rates) if line_tp_tn_rates else 0
+    
+    print(f"\nOverall Segmentation TP+TN Rate: {overall_seg_tp_tn_rate:.4f}")
+    # if NUM_LINE_CLASSES > 0 and line_tp_tn_rates:
+    #     print(f"Overall Line Detection TP+TN Rate: {overall_line_tp_tn_rate:.4f}")
+    
+    return class_tp_tn_rates, line_tp_tn_rates
 
+def visualize_tp_tn_rates(class_tp_tn_rates, line_tp_tn_rates=None, epoch=None):
+    """
+    Visualize TP+TN rates using bar charts similar to the paper's figures.
+    """
+    class_names = ["Background", "Runway Area", "Aiming Point Marking", "Threshold Marking"]
+    line_class_names = ["Left Edge", "Center Line", "Right Edge", "Aiming Point", "Threshold"]
+    
+    # Set up the figure
+    num_plots = 2 if line_tp_tn_rates else 1
+    fig, axes = plt.subplots(1, num_plots, figsize=(6*num_plots, 5))
+    
+    if num_plots == 1:
+        axes = [axes]  # Make it iterable for single plot case
+    
+    # Plot segmentation TP+TN rates
+    ax = axes[0]
+    classes = list(class_tp_tn_rates.keys())
+    rates = [class_tp_tn_rates[cls] for cls in classes]
+    class_labels = [class_names[cls] for cls in classes]
+    
+    bars = ax.bar(class_labels, rates, color='skyblue')
+    ax.set_ylim(0, 1.0)
+    ax.set_ylabel('TP+TN Rate')
+    ax.set_title(f'Segmentation TP+TN Rates{" (Epoch "+str(epoch)+")" if epoch else ""}')
+    
+    # Add rate values on top of the bars
+    for bar, rate in zip(bars, rates):
+        height = bar.get_height()
+        ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+                f'{rate:.3f}', ha='center', va='bottom')
+    
+    # # Plot line detection TP+TN rates if available
+    # if line_tp_tn_rates:
+    #     ax = axes[1]
+    #     line_classes = list(line_tp_tn_rates.keys())
+    #     line_ates = [line_tp_tn_rates[cls] for cls in line_classes]
+    #     line_labels = [line_class_names[cls] if cls < len(line_class_names) else f"Line {cls}" 
+    #                   for cls in line_classes]
+        
+    #     bars = ax.bar(line_labels, line_rates, color='lightgreen')
+    #     ax.set_ylim(0, 1.0)
+    #     ax.set_ylabel('TP+TN Rate')
+    #     ax.set_title(f'Line Detection TP+TN Rates{" (Epoch "+str(epoch)+")" if epoch else ""}')
+        
+    #     # Add rate values on top of the bars
+    #     for bar, rate in zip(bars, line_rates):
+    #         height = bar.get_height()
+    #         ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
+    #                 f'{rate:.3f}', ha='center', va='bottom')
+    
+    plt.tight_layout()
+    save_name = f'tp_tn_rates{"_epoch_"+str(epoch) if epoch else ""}.png'
+    plt.savefig(save_name)
+    plt.close()
+    
+    return save_name
 def calculate_dice_coefficient(seg_pred, seg_true, smooth=1e-6):
     """
     Calculate Dice coefficient for segmentation evaluation.
@@ -184,7 +528,7 @@ def calculate_dice_coefficient(seg_pred, seg_true, smooth=1e-6):
     Returns:
         dict: Dice coefficients for each class and mean Dice
     """
-    num_classes = 2 
+    num_classes = 4
     dice_scores = {}
     
 
@@ -222,7 +566,7 @@ def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
     Returns:
         dict: Jaccard indices for each class and mean IoU
     """
-    num_classes = 2
+    num_classes = 4
     iou_scores = {}
     seg_pred = F.softmax(seg_pred, dim=1)
     pred_classes = torch.argmax(seg_pred, dim=1)
@@ -230,7 +574,7 @@ def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
 
     for cls in range(num_classes):
         pred_cls = (pred_classes == cls).float()
-        target_cls = (seg_true == cls).float()
+        target_cls = (seg_true == cls).float() #can cls be same
         
         intersection = (pred_cls * target_cls).sum()
         # For IoU, the union is (A+B-intersection)
@@ -274,6 +618,7 @@ def evaluate_segmentation_metrics(model, dataloader, device, class_names):
         for images, batch_targets in tqdm(dataloader, desc="Evaluating metrics"):
   
             seg_true = batch_targets[0]
+           
             
             images = images.to(device)
             seg_true = seg_true.to(device)
@@ -351,315 +696,31 @@ def evaluate_segmentation_metrics(model, dataloader, device, class_names):
     
     
     return metrics
-def visualize_tp_tn_rates(class_tp_tn_rates, line_tp_tn_rates=None, epoch=None):
-    """
-    Visualize TP+TN rates using bar charts similar to the paper's figures.
-    """
-    class_names = ["Background", "Runway Area", "Aiming Point Marking", "Threshold Marking"]
-    line_class_names = ["Left Edge", "Center Line", "Right Edge", "Aiming Point", "Threshold"]
-    
-    # Set up the figure
-    num_plots = 2 if line_tp_tn_rates else 1
-    fig, axes = plt.subplots(1, num_plots, figsize=(6*num_plots, 5))
-    
-    if num_plots == 1:
-        axes = [axes]  # Make it iterable for single plot case
-    
-    # Plot segmentation TP+TN rates
-    ax = axes[0]
-    classes = list(class_tp_tn_rates.keys())
-    rates = [class_tp_tn_rates[cls] for cls in classes]
-    class_labels = [class_names[cls] for cls in classes]
-    
-    bars = ax.bar(class_labels, rates, color='skyblue')
-    ax.set_ylim(0, 1.0)
-    ax.set_ylabel('TP+TN Rate')
-    ax.set_title(f'Segmentation TP+TN Rates{" (Epoch "+str(epoch)+")" if epoch else ""}')
-    
-    # Add rate values on top of the bars
-    for bar, rate in zip(bars, rates):
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                f'{rate:.3f}', ha='center', va='bottom')
-    
-    # # Plot line detection TP+TN rates if available
-    # if line_tp_tn_rates:
-    #     ax = axes[1]
-    #     line_classes = list(line_tp_tn_rates.keys())
-    #     line_ates = [line_tp_tn_rates[cls] for cls in line_classes]
-    #     line_labels = [line_class_names[cls] if cls < len(line_class_names) else f"Line {cls}" 
-    #                   for cls in line_classes]
-        
-    #     bars = ax.bar(line_labels, line_rates, color='lightgreen')
-    #     ax.set_ylim(0, 1.0)
-    #     ax.set_ylabel('TP+TN Rate')
-    #     ax.set_title(f'Line Detection TP+TN Rates{" (Epoch "+str(epoch)+")" if epoch else ""}')
-        
-    #     # Add rate values on top of the bars
-    #     for bar, rate in zip(bars, line_rates):
-    #         height = bar.get_height()
-    #         ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-    #                 f'{rate:.3f}', ha='center', va='bottom')
-    
-    plt.tight_layout()
-    save_name = f'tp_tn_rates{"_epoch_"+str(epoch) if epoch else ""}.png'
-    plt.savefig(save_name)
-    plt.close()
-    
-    return save_name
-def evaluate_tp_tn_rate(model, val_loader, device, threshold=0.1):
-    """
-    Evaluate the segmentation performance with TP+TN rate as described in the paper.
-    This calculates the rate of correctly classified pixels (both true positives and true negatives).
-    """
-    model.eval()
-    
-    
-    class_names = ["Background", "Runway Area", "Aiming Point Marking", "Threshold Marking"]
-    
-    # Initialize counters for each class
-    class_stats = {cls: {'total_pixels': 0, 'correct_pixels': 0} for cls in range(NUM_SEG_CLASSES)}
-    
-    # For line detection if applicable
-    line_stats = {cls: {'total_samples': 0, 'correct_samples': 0} for cls in range(NUM_LINE_CLASSES)} if NUM_LINE_CLASSES > 0 else {}
-    
-    with torch.no_grad():
-        # Process segmentation metrics
-        for images, batch_targets in tqdm(val_loader, desc="Evaluating TP+TN Rate"):
-            images = images.to(device)
-            
-            # Unpack targets correctly
-            seg_true = batch_targets[0]
-            line_true = batch_targets[1] if len(batch_targets) > 1 else None
-            
-            seg_true = seg_true.to(device)
-            if line_true is not None:
-                line_true = line_true.to(device)
-            
-            # Get model predictions
-            model_output = model(images)
-            
-            # Extract segmentation and line prediction from model output
-            if isinstance(model_output, dict):
-                if 'segmentation' in model_output and 'line_probability' in model_output:
-                    seg_output = model_output['segmentation']
-                    if isinstance(seg_output, dict) and 'out' in seg_output:
-                        seg_pred = seg_output['out']
-                    else:
-                        print("Error: Unexpected segmentation output structure")
-                        continue
-                        
-                    line_pred = model_output['line_probability']
-                else:
-                    print("Error: Missing keys in model output")
-                    continue
-            else:
-                print("Error: Model output is not a dictionary")
-                continue
-            
-            # Apply softmax to get probability distributions
-            seg_pred = F.softmax(seg_pred, dim=1)
-            seg_pred_classes = torch.argmax(seg_pred, dim=1)
-            
-            # Calculate TP+TN for each class in the batch
-            batch_size = images.size(0)
-            
-            for i in range(batch_size):
-                for cls in range(NUM_SEG_CLASSES):
-                    # Getting binary masks for this class
-                    true_mask = (seg_true[i] == cls)
-                    pred_mask = (seg_pred_classes[i] == cls)
-                    
-                    # Calculating TP (correctly predicted class pixels)
-                    tp = torch.logical_and(true_mask, pred_mask).sum().item()
-                    
-                    # Calculating TN (correctly predicted non-class pixels)
-                    tn = torch.logical_and(~true_mask, ~pred_mask).sum().item()
-                    
-                    class_stats[cls]['total_pixels'] += true_mask.numel()
-                    class_stats[cls]['correct_pixels'] += (tp + tn)
-            
-            # Process line predictions if applicable and if line_true is provided
-            if NUM_LINE_CLASSES > 0 and line_true is not None:
-                # Implementation for line detection metrics if needed
-                pass
-    
-    # Calculate TP+TN rates for segmentation
-    class_tp_tn_rates = {}
-    for cls in range(NUM_SEG_CLASSES):
-        if class_stats[cls]['total_pixels'] > 0:
-            tp_tn_rate = class_stats[cls]['correct_pixels'] / class_stats[cls]['total_pixels']
-            class_tp_tn_rates[cls] = tp_tn_rate
-    
-    # Print results
-    print("\nSegmentation TP+TN Rates:")
-    for cls in range(NUM_SEG_CLASSES):
-        if cls in class_tp_tn_rates:
-            print(f"{class_names[cls]}: {class_tp_tn_rates[cls]:.4f}")
-    
-    # Calculate overall rates
-    overall_seg_tp_tn_rate = sum(class_tp_tn_rates.values()) / len(class_tp_tn_rates) if class_tp_tn_rates else 0
-    
-    print(f"\nOverall Segmentation TP+TN Rate: {overall_seg_tp_tn_rate:.4f}")
-    
-    return class_tp_tn_rates
 
-def visualize_tp_tn_rates(class_tp_tn_rates, line_tp_tn_rates=None, epoch=None):
-    """
-    Visualize TP+TN rates using bar charts similar to the paper's figures.
-    """
-    class_names = ["Background", "Runway Area", "Aiming Point Marking", "Threshold Marking"]
-    line_class_names = ["Left Edge", "Center Line", "Right Edge", "Aiming Point", "Threshold"]
-    
-    # Set up the figure
-    num_plots = 2 if line_tp_tn_rates else 1
-    fig, axes = plt.subplots(1, num_plots, figsize=(6*num_plots, 5))
-    
-    if num_plots == 1:
-        axes = [axes]  # Make it iterable for single plot case
-    
-    # Plot segmentation TP+TN rates
-    ax = axes[0]
-    classes = list(class_tp_tn_rates.keys())
-    rates = [class_tp_tn_rates[cls] for cls in classes]
-    class_labels = [class_names[cls] for cls in classes]
-    
-    bars = ax.bar(class_labels, rates, color='skyblue')
-    ax.set_ylim(0, 1.0)
-    ax.set_ylabel('TP+TN Rate')
-    ax.set_title(f'Segmentation TP+TN Rates{" (Epoch "+str(epoch)+")" if epoch else ""}')
-    
-    # Add rate values on top of the bars
-    for bar, rate in zip(bars, rates):
-        height = bar.get_height()
-        ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-                f'{rate:.3f}', ha='center', va='bottom')
-    
-    # # Plot line detection TP+TN rates if available
-    # if line_tp_tn_rates:
-    #     ax = axes[1]
-    #     line_classes = list(line_tp_tn_rates.keys())
-    #     line_ates = [line_tp_tn_rates[cls] for cls in line_classes]
-    #     line_labels = [line_class_names[cls] if cls < len(line_class_names) else f"Line {cls}" 
-    #                   for cls in line_classes]
-        
-    #     bars = ax.bar(line_labels, line_rates, color='lightgreen')
-    #     ax.set_ylim(0, 1.0)
-    #     ax.set_ylabel('TP+TN Rate')
-    #     ax.set_title(f'Line Detection TP+TN Rates{" (Epoch "+str(epoch)+")" if epoch else ""}')
-        
-    #     # Add rate values on top of the bars
-    #     for bar, rate in zip(bars, line_rates):
-    #         height = bar.get_height()
-    #         ax.text(bar.get_x() + bar.get_width()/2., height + 0.01,
-    #                 f'{rate:.3f}', ha='center', va='bottom')
-    
-    plt.tight_layout()
-    save_name = f'tp_tn_rates{"_epoch_"+str(epoch) if epoch else ""}.png'
-    plt.savefig(save_name)
-    plt.close()
-    
-    return save_name
-
-
-# def visualize_segmentation_results(model, val_loader, device, num_samples=3):
-#     """
-#     Visualize segmentation predictions for a few validation samples.
-#     """
-#     model.eval()
-    
-#     # Getting a few samples from validation set
-#     samples = []
-#     with torch.no_grad():
-#         for images, (seg_true, _) in val_loader:
-#             if len(samples) >= num_samples:
-#                 break
-            
-  
-#             batch_size = min(num_samples - len(samples), images.size(0))
-#             for i in range(batch_size):
-#                 samples.append((images[i:i+1], seg_true[i:i+1]))
-    
-  
-#     fig, axs = plt.subplots(num_samples, 3, figsize=(15, 5*num_samples))
-#     if num_samples == 1:
-#         axs = axs.reshape(1, -1)
-    
-#     # Class colors for visualization a given in the dataset runaway fs
-#     colors = [
-#         [0, 0, 0],        # Background - black
-#         [255, 0, 0],      # Runway Area - red
-#         [255, 255, 0],    # Aiming Point Marking - yellow
-#         [0, 255, 0]       # Threshold Marking - green
-#     ]
-#     colors = np.array(colors)
-    
-#     with torch.no_grad():
-#         for i, (image, seg_true) in enumerate(samples):
-#             image = image.to(device)
-#             seg_true = seg_true.to(device)
-            
-
-#             seg_pred, _ = model(image)
-#             seg_pred = F.softmax(seg_pred, dim=1)
-#             pred= torch.argmax(seg_pred, dim=1)
-#             image = image.cpu().numpy()[0]
-#             image = np.transpose(image, (1, 2, 0))
-#             # Denormalize image
-#             image = image * np.array([0.229, 0.224, 0.225]) + np.array([0.485, 0.456, 0.406])
-#             image = np.clip(image, 0, 1)
-            
-#             seg_true = seg_true.cpu().numpy()[0]
-#             seg_pred = seg_pred.cpu().numpy()[0]
-            
-#             # Create colored segmentation maps
-#             true_colored = np.zeros((seg_true.shape[0], seg_true.shape[1], 3), dtype=np.uint8)
-#             pred_colored = np.zeros((seg_pred.shape[0], seg_pred.shape[1], 3), dtype=np.uint8)
-            
-#             for cls in range(NUM_SEG_CLASSES):
-#                 true_colored[seg_true == cls] = colors[cls]
-#                 pred_colored[seg_pred == cls] = colors[cls]
-            
-#             # Plot
-#             axs[i, 0].imshow(image)
-#             axs[i, 0].set_title('Input Image')
-#             axs[i, 0].axis('off')
-            
-#             axs[i, 1].imshow(true_colored)
-#             axs[i, 1].set_title('Ground Truth')
-#             axs[i, 1].axis('off')
-            
-#             axs[i, 2].imshow(pred_colored)
-#             axs[i, 2].set_title('Prediction')
-#             axs[i, 2].axis('off')
-    
-#     plt.tight_layout()
-#     plt.savefig('segmentation_results.png')
-#     plt.close()
 def visualize_segmentation_results(model, val_loader, device, num_samples=3):
     """
     Visualize segmentation predictions for a few validation samples.
     """
     model.eval()
     
+    # Getting a few samples from validation set
     samples = []
     with torch.no_grad():
-        for images, batch_targets in val_loader:
+        for images, (seg_true, _) in val_loader:
             if len(samples) >= num_samples:
                 break
             
-            seg_true = batch_targets[0]
-            
+  
             batch_size = min(num_samples - len(samples), images.size(0))
             for i in range(batch_size):
                 samples.append((images[i:i+1], seg_true[i:i+1]))
     
-   
+  
     fig, axs = plt.subplots(num_samples, 3, figsize=(15, 5*num_samples))
     if num_samples == 1:
         axs = axs.reshape(1, -1)
     
-   
+    # Class colors for visualization a given in the dataset runaway fs
     colors = [
         [0, 0, 0],        # Background - black
         [255, 0, 0],      # Runway Area - red
@@ -673,26 +734,10 @@ def visualize_segmentation_results(model, val_loader, device, num_samples=3):
             image = image.to(device)
             seg_true = seg_true.to(device)
             
-            # Get model predictions
-            model_output = model(image)
-            
-            # Extract segmentation output
-            if isinstance(model_output, dict) and 'segmentation' in model_output:
-                seg_output = model_output['segmentation']
-                if isinstance(seg_output, dict) and 'out' in seg_output:
-                    seg_pred = seg_output['out']
-                else:
-                    print("Error: Unexpected segmentation output structure")
-                    continue
-            else:
-                print("Error: Model output structure not as expected")
-                continue
-            
-            # Process predictions
-            seg_pred_softmax = F.softmax(seg_pred, dim=1)
-            seg_pred_classes = torch.argmax(seg_pred_softmax, dim=1)
-            
-            # Convert to numpy for visualization
+
+            seg_pred, _ = model(image)
+            seg_pred = F.softmax(seg_pred, dim=1)
+            seg_pred = torch.argmax(seg_pred, dim=1)
             image = image.cpu().numpy()[0]
             image = np.transpose(image, (1, 2, 0))
             # Denormalize image
@@ -700,15 +745,15 @@ def visualize_segmentation_results(model, val_loader, device, num_samples=3):
             image = np.clip(image, 0, 1)
             
             seg_true = seg_true.cpu().numpy()[0]
-            seg_pred_classes = seg_pred_classes.cpu().numpy()[0]
+            seg_pred = seg_pred.cpu().numpy()[0]
             
             # Create colored segmentation maps
             true_colored = np.zeros((seg_true.shape[0], seg_true.shape[1], 3), dtype=np.uint8)
-            pred_colored = np.zeros((seg_pred_classes.shape[0], seg_pred_classes.shape[1], 3), dtype=np.uint8)
+            pred_colored = np.zeros((seg_pred.shape[0], seg_pred.shape[1], 3), dtype=np.uint8)
             
             for cls in range(NUM_SEG_CLASSES):
                 true_colored[seg_true == cls] = colors[cls]
-                pred_colored[seg_pred_classes == cls] = colors[cls]
+                pred_colored[seg_pred == cls] = colors[cls]
             
             # Plot
             axs[i, 0].imshow(image)
@@ -773,13 +818,13 @@ def evaluate_tp_tn_rate(model, val_loader, device, threshold=0.1):
             seg_pred_classes = torch.argmax(seg_pred, dim=1)
             
            
-            batch_size = images.size(0)
+            # batch_size = images.size(0)
             
-            for i in range(batch_size):
-                for cls in range(NUM_SEG_CLASSES):
+            # for i in range(batch_size):
+            for cls in range(NUM_SEG_CLASSES):
                  
-                    true_mask = (seg_true[i] == cls)
-                    pred_mask = (seg_pred_classes[i] == cls)
+                    true_mask = (seg_true == cls)
+                    pred_mask = (seg_pred_classes == cls)
                     
                    
                     tp = torch.logical_and(true_mask, pred_mask).sum().item()
@@ -933,13 +978,12 @@ if __name__ == "__main__":
     )
 
     loss_plot(train_loss, valid_loss)
-    evaluate_segmentation_metrics(model, val_loader, DEVICE, class_names = ["Background", "Runway Area"])
 
     class_tp_tn_rates= evaluate_tp_tn_rate(model, val_loader, DEVICE)
-    
+    evaluate_segmentation_metrics(model, val_loader, DEVICE, class_names = ["Background", "Runway Area","Aiming Point Marking","Threshold Marking"])
     visualize_tp_tn_rates(class_tp_tn_rates)
     
 
-    #visualize_segmentation_results(model, val_loader, DEVICE, num_samples=3)
+    # visualize_segmentation_results(model, val_loader, DEVICE, num_samples=3)
     
     print("Training complete!")
