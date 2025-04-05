@@ -209,17 +209,17 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     for epoch in range(epochs):
         print(f"Epoch {epoch+1} of {epochs}")
   
-        # Train for one epoch
+      
         train_epoch_loss = train(model, train_loader, device, optimizer, criterion)
         
-        # Evaluate model
+      
         val_metrics = eval(model, val_loader, device, criterion)
         valid_epoch_loss = val_metrics["loss"]
         epoch_dice = val_metrics["dice_coefficient"]
         epoch_iou = val_metrics["jaccard_index"]
        
       
-        # Storing metrics history
+      
         train_loss_history.append(train_epoch_loss)
         valid_loss_history.append(valid_epoch_loss)
         dice_history.append(epoch_dice)

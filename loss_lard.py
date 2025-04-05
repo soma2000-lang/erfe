@@ -5,8 +5,7 @@ import torch.nn.functional as F
 class SegmentationLoss(nn.Module):
     def __init__(self, pos_weight=2.0):
         super(SegmentationLoss, self).__init__()
-        # BCEWithLogitsLoss for binary segmentation
-        # pos_weight increases the importance of positive pixels (runway)
+        
         self.bce_loss = nn.BCEWithLogitsLoss(pos_weight=torch.tensor([pos_weight])) # to handle the class imbalance problem
         
     def forward(self, y_pred, y_true):

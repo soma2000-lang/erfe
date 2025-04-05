@@ -452,12 +452,12 @@ def main():
     input_image_dir = "/home/AD/sthapa/grid_aero/LARDS/test_data/real_nominal_test/images"
     test_json_path = "/home/AD/sthapa/grid_aero/LARDS/test_data/real_nominal_test/annotations.json"
     output_dir = "/home/AD/sthapa/segmentation_pipeline/grid_aero/lards_test_exp_8/nominal"
-    batch_size = 12 # Adjust based on your GPU memory
-    apply_sigmoid = True # in case model is returning logits.
-    use_gpu = True  # Set to False to force CPU execution
+    batch_size = 3
+    apply_sigmoid = True 
+    use_gpu = True 
     save_pred = 10
     
-    # Create output directory
+  
     os.makedirs(output_dir, exist_ok=True)
     
     # Print available providers for debugging
