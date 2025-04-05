@@ -1,6 +1,12 @@
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
+import torch.nn as nn
+import torch.distributed as dist
+import torch.multiprocessing as mp
+from torch.nn.parallel import DistributedDataParallel as DDP
+from torch.utils.data import DataLoader, Dataset
+from torch.utils.data.distributed import DistributedSampler
 import numpy as np
 import cv2
 import matplotlib.pyplot as plt
@@ -8,10 +14,9 @@ import os
 import pandas as pd
 from tqdm import tqdm
 import albumentations as A
-from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
 
-from config_lard import (DEVICE, INPUT_SHAPE, BATCH_SIZE, LEARNING_RATE,NUM_SEG_CLASSES,NUM_EPOCHS,NUM_LINE_CLASSES)
+from config_lard import (INPUT_SHAPE, BATCH_SIZE, LEARNING_RATE, NUM_SEG_CLASSES, NUM_EPOCHS, NUM_LINE_CLASSES)
 from model_lard import ERFE
 from loss_lard import CombinedLoss, SegmentationLoss
 from dataloader_lard import RunwayDataset
@@ -35,23 +40,22 @@ def create_mask_from_coordinates(image_shape, coordinates, class_id=1):
    
     mask = np.zeros(image_shape, dtype=np.uint8)
     
- 
     coords_array = np.array(coordinates, dtype=np.int32)
     
-
     cv2.fillPoly(mask, [coords_array], class_id)
     
     return mask
 
-
-
-
-def train(model, dataloader, device, optimizer, criterion):
+def train(model, dataloader, device, optimizer, criterion, epoch, world_size):
     model.train()
     running_loss = 0
     counter = 0
     
-    for idx, batch in tqdm(enumerate(dataloader), desc="Training loop", total=len(dataloader)/BATCH_SIZE):
+
+    if isinstance(dataloader.sampler, DistributedSampler):
+        dataloader.sampler.set_epoch(epoch)
+    
+    for idx, batch in enumerate(tqdm(dataloader, desc=f"Training on GPU:{device}", disable=device != 0)):
         counter += 1
         images = batch['image'].to(device)
         seg_true = batch['seg_mask'].to(device)
@@ -60,7 +64,7 @@ def train(model, dataloader, device, optimizer, criterion):
         
         model_output = model(images)
         
-        # Extract segmentation output
+     
         if isinstance(model_output, dict) and 'segmentation' in model_output:
             seg_output = model_output['segmentation']
             if isinstance(seg_output, dict) and 'out' in seg_output:
@@ -81,12 +85,17 @@ def train(model, dataloader, device, optimizer, criterion):
         loss.backward()
         running_loss += loss.item()
         optimizer.step()
+
+    loss_tensor = torch.tensor(running_loss / counter if counter > 0 else float('inf'), device=device)
+    dist.all_reduce(loss_tensor, op=dist.ReduceOp.SUM)
+    training_loss = loss_tensor.item() / world_size
     
-    training_loss = running_loss / counter if counter > 0 else float('inf')
-    print("training loss", training_loss)
+    if device == 0:  
+        print(f"Epoch {epoch+1} - Training loss: {training_loss:.4f}")
+    
     return training_loss
 
-def calculate_dice_coefficient(seg_pred,seg_true , smooth=1e-6):
+def calculate_dice_coefficient(seg_pred, seg_true, smooth=1e-6):
     """
     Calculate Dice coefficient for segmentation evaluation.
     
@@ -96,22 +105,15 @@ def calculate_dice_coefficient(seg_pred,seg_true , smooth=1e-6):
         smooth (float): Smoothing factor to avoid division by zero
         
     Returns:
-        dict: Dice coefficients for each class and mean Dice
+        float: Dice coefficient
     """
-
-    seg_pred = F.sigmoid(seg_pred) #continuous probrability
+    seg_pred = F.sigmoid(seg_pred)
     
-
     intersection = (seg_pred * seg_true).sum()
     union = seg_pred.sum() + seg_true.sum()
     dice = (2.0 * intersection + smooth) / (union + smooth)
     
-
-    print("dice_coefficient",dice)
-   
-    
-    
-    return dice
+    return dice.item()
 
 def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
     """
@@ -123,37 +125,29 @@ def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
         smooth (float): Smoothing factor to avoid division by zero
         
     Returns:
-        dict: Jaccard indices for each class and mean IoU
+        float: Jaccard index (IoU)
     """
+    seg_pred = F.sigmoid(seg_pred)
     
-    
-    seg_pred = F.sigmoid(seg_pred) #continuous probrability
-        
-
     intersection = (seg_pred * seg_true).sum()
-    union = seg_pred.sum() + seg_true.sum()
+    union = seg_pred.sum() + seg_true.sum() - intersection
     jaccard = (intersection + smooth) / (union + smooth)
-        
+    
+    return jaccard.item()
 
-    print("jaccard",jaccard)
-
-def eval(model, dataloader, device, criterion):
+def eval(model, dataloader, device, criterion, world_size):
     model.eval()
     running_loss = 0
     counter = 0
-
-    
+    dice_sum = 0
+    jaccard_sum = 0
     
     with torch.no_grad():
-        for idx, (images, (seg_true, line_true)) in tqdm(enumerate(dataloader), 
-                                                        desc="Validation loop", 
-                                                        total=len(dataloader)):
+        for idx, batch in enumerate(tqdm(dataloader, desc=f"Validation on GPU:{device}", disable=device != 0)):
             counter += 1
-            images = images.to(device)
-            seg_true = seg_true.to(device)
-
+            images = batch['image'].to(device)
+            seg_true = batch['seg_mask'].to(device)
             
-
             model_output = model(images)
 
             if isinstance(model_output, dict) and 'segmentation' in model_output:
@@ -162,126 +156,190 @@ def eval(model, dataloader, device, criterion):
                     seg_pred = seg_output['out']
                 else:
                     continue
-                    
-              
-          
             
             loss = criterion(seg_pred, seg_true)
             running_loss += loss.item()
             
-           
             batch_dice = calculate_dice_coefficient(seg_pred, seg_true)
             batch_iou = calculate_jaccard_index(seg_pred, seg_true)
             
-      
+            dice_sum += batch_dice
+            jaccard_sum += batch_iou
+
+    metrics_tensor = torch.tensor([running_loss, dice_sum, jaccard_sum, counter], device=device, dtype=torch.float32)
+    dist.all_reduce(metrics_tensor, op=dist.ReduceOp.SUM)
     
-    validation_loss = running_loss / counter if counter > 0 else float('inf')
+    counter_total = metrics_tensor[3].item()
     
-   
+    if counter_total > 0:
+        validation_loss = metrics_tensor[0].item() / counter_total
+        dice_avg = metrics_tensor[1].item() / counter_total
+        jaccard_avg = metrics_tensor[2].item() / counter_total
+    else:
+        validation_loss = float('inf')
+        dice_avg = 0
+        jaccard_avg = 0
     
     metrics = {
         "loss": validation_loss,
-        "dice_coefficient": batch_dice,
-        "jaccard_index": batch_iou,
-      
+        "dice_coefficient": dice_avg,
+        "jaccard_index": jaccard_avg,
     }
     
-    print("jaccard",batch_iou)
-    print("dice_coefficient",batch_dice)
+
+    if device == 0:
+        print(f"Validation Loss: {validation_loss:.4f}")
+        print(f"Dice Coefficient: {dice_avg:.4f}")
+        print(f"IoU (Jaccard): {jaccard_avg:.4f}")
+    
     return metrics
 
-def training_loop(epochs, model, train_loader, val_loader, device, optimizer, criterion, scheduler=None):
+def setup(rank, world_size):
+    """Initialize distributed environment"""
+    os.environ['MASTER_ADDR'] = 'localhost'
+    os.environ['MASTER_PORT'] = '12355'
+    
+
+    dist.init_process_group("nccl", rank=rank, world_size=world_size)
+
+def cleanup():
+    """Clean up distributed environment"""
+    dist.destroy_process_group()
+
+def training_loop_ddp(rank, world_size, epochs, model, train_dataset, val_dataset, batch_size, criterion_class, lr):
+
+    device = torch.device(f"cuda:{rank}")
+    torch.cuda.set_device(device)
+    
+  
+    setup(rank, world_size)
+    
+
+    train_sampler = DistributedSampler(
+        train_dataset, 
+        num_replicas=world_size, 
+        rank=rank,
+        shuffle=True
+    )
+    
+    val_sampler = DistributedSampler(
+        val_dataset,
+        num_replicas=world_size,
+        rank=rank,
+        shuffle=False
+    )
+    
+
+    train_loader = DataLoader(
+        train_dataset,
+        batch_size=batch_size,
+        sampler=train_sampler,
+        pin_memory=True,
+        num_workers=4
+    )
+    
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=batch_size,
+        sampler=val_sampler,
+        pin_memory=True,
+        num_workers=4
+    )
+    
+
+    model = model.to(device)
+    
+
+    model = DDP(model, device_ids=[rank], output_device=rank)
+    
+
+    criterion = criterion_class()
+    optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=5,
+    )
+    
+
     train_loss_history = []
     valid_loss_history = []
     dice_history = []
     iou_history = []
-
     
     best_val_loss = float('inf')
     best_dice = 0.0
     best_epoch = -1
     
     checkpoint_dir = 'checkpoints'
-    folder_check(checkpoint_dir)
+    if rank == 0: 
+        folder_check(checkpoint_dir)
     
-  
-    
+    # Training loop
     for epoch in range(epochs):
-        print(f"Epoch {epoch+1} of {epochs}")
-  
-      
-        train_epoch_loss = train(model, train_loader, device, optimizer, criterion)
+
+        train_epoch_loss = train(model, train_loader, device, optimizer, criterion, epoch, world_size)
         
-      
-        val_metrics = eval(model, val_loader, device, criterion)
+
+        val_metrics = eval(model, val_loader, device, criterion, world_size)
         valid_epoch_loss = val_metrics["loss"]
         epoch_dice = val_metrics["dice_coefficient"]
         epoch_iou = val_metrics["jaccard_index"]
-       
-      
-      
-        train_loss_history.append(train_epoch_loss)
-        valid_loss_history.append(valid_epoch_loss)
-        dice_history.append(epoch_dice)
-        iou_history.append(epoch_iou)
-
-        
-        # Printing metrics
-        print(f"Train Loss: {train_epoch_loss:.4f}")
-        print(f"Val Loss: {valid_epoch_loss:.4f}")
-        print(f"Mean Dice: {epoch_dice:.4f}")
-        print(f"Mean IoU: {epoch_iou:.4f}")
-
         
 
+        if rank == 0:
+            train_loss_history.append(train_epoch_loss)
+            valid_loss_history.append(valid_epoch_loss)
+            dice_history.append(epoch_dice)
+            iou_history.append(epoch_iou)
+            
+            print(f"------ End of Epoch {epoch + 1}/{epochs} -------")
+            
 
-        if scheduler is not None:
             scheduler.step(valid_epoch_loss)
-        
-     
-        save_model = False
-        save_reason = ""
-        
-
-        if valid_epoch_loss < best_val_loss:
-            best_val_loss = valid_epoch_loss
-            save_model = True
-            save_reason = "validation loss"
-      
-        if epoch_dice > best_dice + 0.005:
-            best_dice = epoch_dice
-            save_model = True
-            save_reason = "Dice score"
             
-        if save_model:
-            best_epoch = epoch
+
+            save_model = False
+            save_reason = ""
             
-            torch.save(model.state_dict(), 
-                       f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
-
-            torch.save(model.state_dict(), 'runway_segmentation_best_model.pth')
-            print(f"\nModel saved at epoch: {epoch + 1} (improved {save_reason})\n")
+            if valid_epoch_loss < best_val_loss:
+                best_val_loss = valid_epoch_loss
+                save_model = True
+                save_reason = "validation loss"
+            
+            if epoch_dice > best_dice + 0.005:
+                best_dice = epoch_dice
+                save_model = True
+                save_reason = "Dice score"
+                
+            if save_model:
+                best_epoch = epoch
+            
+                torch.save(model.module.state_dict(), 
+                           f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
+                
+                torch.save(model.module.state_dict(), 'runway_segmentation_best_model.pth')
+                print(f"\nModel saved at epoch: {epoch + 1} (improved {save_reason})\n")
         
-        print(f"------ End of Epoch {epoch + 1} -------")
 
+        dist.barrier()
     
+
+    if rank == 0:
+        print("\nTraining complete!")
+
+        loss_plot(train_loss_history, valid_loss_history, dice_history, iou_history)
+        
+        print(f"Best model at epoch {best_epoch + 1}")
+        print(f"Best validation loss: {best_val_loss:.4f}")
+        print(f"Best Dice coefficient: {best_dice:.4f}")
     
-    print("\nPerforming final evaluation...")
-    final_metrics = eval(model, val_loader, device, criterion)
-    print(f"Validation Loss: {final_metrics['loss']:.4f}")
-    print(f"Dice Coefficient: {final_metrics['dice_coefficient']:.4f}")
-    print(f"Jaccard Index (IoU): {final_metrics['jaccard_index']:.4f}")
-    model.load_state_dict(torch.load('runway_segmentation_best_model.pth'))
-    
-    return model, train_loss_history, valid_loss_history, dice_history, iou_history, best_val_loss, best_dice, best_epoch
+
+    cleanup()
 
 def loss_plot(train_loss, valid_loss, dice_history=None, iou_history=None):
     """Plot and save training and validation loss curves with metrics."""
     if dice_history is not None and iou_history is not None:
-
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
         
- 
         ax1.plot(train_loss, color='orange', label='train loss')
         ax1.plot(valid_loss, color='red', label='validation loss')
         ax1.set_xlabel('Epochs')
@@ -300,7 +358,6 @@ def loss_plot(train_loss, valid_loss, dice_history=None, iou_history=None):
         plt.tight_layout()
         plt.savefig('runway_segmentation_metrics.png')
     else:
-
         plt.figure(figsize=(10, 7))
         plt.plot(train_loss, color='orange', label='train loss')
         plt.plot(valid_loss, color='red', label='validation loss')
@@ -311,59 +368,23 @@ def loss_plot(train_loss, valid_loss, dice_history=None, iou_history=None):
     
     plt.close()
 
+def main():
 
+    world_size = 2
+    
 
-
-if  __name__ == "__main__":
-   
     image_dir = "/home/AD/smajumder/lard/data/"
     coordinates_csv_path = "/home/AD/smajumder/gridaero/LARD_train.csv"
-
-   
-    
 
     image_paths = []
     for fname in os.listdir(image_dir):
         if fname.endswith('.jpeg'):
             image_paths.append(os.path.join(image_dir, fname))
     
-
-   
-    
-    # Since we're dealing with semantic segmentation only, we'll use empty line paths
-    # The dataloader will need to be adjusted to handle this
-    #line_paths = [line_paths_dir] * len(image_paths) if os.path.exists(line_paths_dir) else [""] * len(image_paths)
     line_paths = [""] * len(image_paths)
-    # Split into train and validation
-    train_idx = int(len(image_paths))
     
-    # train_dataset = RunwayDataset(
-    #     image_paths[:train_idx],
-    #     mask_paths[:train_idx],
-    #     line_paths[:train_idx],
-    #     augment=True
-    # )
-    
-    # val_dataset = RunwayDataset(
-    #     image_paths[train_idx:],
-    #     mask_paths[train_idx:],
-    #     line_paths[train_idx:]
-    # )
+    train_idx = int(len(image_paths) * 0.8)  
 
-    # train_loader = DataLoader(
-    #     train_dataset,
-    #     batch_size=BATCH_SIZE,
-    #     shuffle=True,
-    # )
-    
-    # val_loader = DataLoader(
-    #     val_dataset,
-    #     batch_size=BATCH_SIZE,
-    #     shuffle=False,
-    # )
-    train_idx = int(len(image_paths) * 0.8)  # 80% for training, adjust as needed
-
-    # Initialize datasets
     train_dataset = RunwayDataset(
         image_paths=image_paths[:train_idx],
         coordinates_csv_path=coordinates_csv_path,
@@ -373,52 +394,21 @@ if  __name__ == "__main__":
     val_dataset = RunwayDataset(
         image_paths=image_paths[train_idx:],
         coordinates_csv_path=coordinates_csv_path,
-        augment=False  # No augmentation for validation
+        augment=False
     )
-
-  
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=True,
-        
-    )
-
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=BATCH_SIZE,
-        shuffle=False,
-
-    )
-        
-        
-        
-    model = ERFE(num_seg_classes=NUM_SEG_CLASSES, num_line_classes=NUM_LINE_CLASSES)
-    model = model.to(DEVICE)
-
-    criterion = CombinedLoss()
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
-    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=5,
-        )
-        
+   
+    model = ERFE(num_seg_classes=NUM_SEG_CLASSES, num_line_classes=NUM_LINE_CLASSES)
+    
 
-    model, train_loss, valid_loss, best_val_loss, best_epoch = training_loop(
-            epochs=NUM_EPOCHS, 
-            model=model, 
-            train_loader=train_loader, 
-            val_loader=val_loader, 
-            device=DEVICE, 
-            optimizer=optimizer, 
-            criterion=criterion,
-            scheduler=scheduler
-        )
+    mp.spawn(
+        training_loop_ddp,
+        args=(world_size, NUM_EPOCHS, model, train_dataset, val_dataset, BATCH_SIZE, CombinedLoss, LEARNING_RATE),
+        nprocs=world_size,
+        join=True
+    )
 
-    loss_plot(train_loss, valid_loss)
-    print("Training complete!")
+if __name__ == "__main__":
 
-
-
-
-
+    torch.multiprocessing.set_sharing_strategy('file_system')
+    main()
