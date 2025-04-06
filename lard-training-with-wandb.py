@@ -10,12 +10,28 @@ from tqdm import tqdm
 import albumentations as A
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
+import wandb  # Import wandb
 
-from config_lard import (DEVICE, INPUT_SHAPE, BATCH_SIZE, LEARNING_RATE,NUM_SEG_CLASSES,NUM_EPOCHS,NUM_LINE_CLASSES)
+from config_lard import (DEVICE, INPUT_SHAPE, BATCH_SIZE, LEARNING_RATE, NUM_SEG_CLASSES, NUM_EPOCHS, NUM_LINE_CLASSES)
 from model_lard import ERFE
 from loss_lard import CombinedLoss, SegmentationLoss
 from dataloader_lard import RunwayDataset
 
+
+def init_wandb(project_name="runway-segmentation", config=None):
+    """Initialize wandb with project name and config."""
+    if config is None:
+        config = {
+            "learning_rate": LEARNING_RATE,
+            "batch_size": BATCH_SIZE,
+            "epochs": NUM_EPOCHS,
+            "model": "ERFE",
+            "input_shape": INPUT_SHAPE,
+            "seg_classes": NUM_SEG_CLASSES,
+            "line_classes": NUM_LINE_CLASSES,
+        }
+    wandb.init(project=project_name, config=config)
+    
 def folder_check(folder_path):
     if not os.path.exists(folder_path):
         os.makedirs(folder_path)
@@ -34,24 +50,59 @@ def create_mask_from_coordinates(image_shape, coordinates, class_id=1):
     """
    
     mask = np.zeros(image_shape, dtype=np.uint8)
-    
- 
     coords_array = np.array(coordinates, dtype=np.int32)
-    
-
     cv2.fillPoly(mask, [coords_array], class_id)
     
     return mask
 
+def log_images_to_wandb(images, seg_true, seg_pred, num_samples=2):
+    """Log images with true and predicted masks to wandb."""
+    if wandb.run is None:
+        return
+        
+    # Convert from tensors to numpy for visualization
+    images_np = images.detach().cpu().numpy()
+    seg_true_np = seg_true.detach().cpu().numpy()
+    
+    # Apply sigmoid to prediction
+    seg_pred_np = torch.sigmoid(seg_pred).detach().cpu().numpy()
+    
+    # Only log a subset of images
+    n = min(num_samples, images_np.shape[0])
+    
+    image_logs = []
+    for i in range(n):
+        # Transpose image from (C,H,W) to (H,W,C) and rescale to [0,255]
+        img = np.transpose(images_np[i], (1, 2, 0)) * 255
+        img = img.astype(np.uint8)
+        
+        # Get masks
+        true_mask = seg_true_np[i, 0]  # Assuming single channel mask
+        pred_mask = seg_pred_np[i, 0] > 0.5  # Threshold at 0.5
+        
+        # Create a mask overlay for visualization
+        true_overlay = img.copy()
+        true_overlay[true_mask > 0] = [255, 0, 0]  # Red overlay
+        
+        pred_overlay = img.copy()
+        pred_overlay[pred_mask > 0] = [0, 255, 0]  # Green overlay
+        
+        image_logs.append(wandb.Image(
+            img, 
+            masks={
+                "true": {"mask_data": true_mask, "class_labels": {1: "runway"}},
+                "pred": {"mask_data": pred_mask, "class_labels": {1: "runway"}}
+            }
+        ))
+    
+    wandb.log({"sample_predictions": image_logs})
 
-
-
-def train(model, dataloader, device, optimizer, criterion):
+def train(model, dataloader, device, optimizer, criterion, epoch):
     model.train()
     running_loss = 0
     counter = 0
     
-    for idx, batch in tqdm(enumerate(dataloader), desc="Training loop", total=len(dataloader)):
+    for idx, batch in tqdm(enumerate(dataloader), desc="Training loop", total=np.ceil(len(dataloader.dataset)/BATCH_SIZE)):
         counter += 1
         images = batch['image'].to(device)
         seg_true = batch['seg_mask'].to(device)
@@ -70,32 +121,36 @@ def train(model, dataloader, device, optimizer, criterion):
                 continue
         else:
             print("ERROR: Model output is not a dictionary")
-            continue
+             
+             
             
         if not isinstance(seg_pred, torch.Tensor):
             print(f"ERROR: seg_pred is not a tensor: {type(seg_pred)}")
             continue
             
         loss = criterion(seg_pred, seg_true)
-        if torch.isnan(loss):
-            print(f"🚨 NaN detected in loss at batch {idx}")
-            print("Exiting...")
-            exit(1)
+        
         loss.backward()
         running_loss += loss.item()
         optimizer.step()
+        
+       
+        if idx % 10 == 0:
+            wandb.log({
+                "batch_train_loss": loss.item(),
+                "epoch": epoch,
+                "batch": idx
+            })
     
     training_loss = running_loss / counter if counter > 0 else float('inf')
     print("training loss", training_loss)
-    print(f"After training: memory allocated: {torch.cuda.memory_allocated() / 1024 ** 2:.2f} MB")
-    print(f"After training: memory reserved: {torch.cuda.memory_reserved() / 1024 ** 2:.2f} MB")
-    torch.cuda.synchronize()  # waiting
     
-
-  
+    # Log epoch metrics to wandb
+    wandb.log({"train_loss": training_loss, "epoch": epoch})
+    
     return training_loss
 
-def calculate_dice_coefficient(seg_pred,seg_true , smooth=1e-6):
+def calculate_dice_coefficient(seg_pred, seg_true, smooth=1e-6):
     """
     Calculate Dice coefficient for segmentation evaluation.
     
@@ -108,18 +163,13 @@ def calculate_dice_coefficient(seg_pred,seg_true , smooth=1e-6):
         dict: Dice coefficients for each class and mean Dice
     """
 
-    seg_pred = F.sigmoid(seg_pred) #continuous probrability
+    seg_pred = F.sigmoid(seg_pred) #continuous probability
     
-
     intersection = (seg_pred * seg_true).sum()
     union = seg_pred.sum() + seg_true.sum()
     dice = (2.0 * intersection + smooth) / (union + smooth)
     
-
-    print("dice_coefficient",dice)
-   
-    
-    
+    print("dice_coefficient", dice)
     return dice
 
 def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
@@ -135,36 +185,28 @@ def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
         dict: Jaccard indices for each class and mean IoU
     """
     
+    seg_pred = F.sigmoid(seg_pred) #continuous probability
     
-    seg_pred = F.sigmoid(seg_pred) #continuous probrability
-        
-
     intersection = (seg_pred * seg_true).sum()
-    union = seg_pred.sum() + seg_true.sum()
+    union = seg_pred.sum() + seg_true.sum() - intersection
     jaccard = (intersection + smooth) / (union + smooth)
-        
+    
+    print("jaccard", jaccard)
+    return jaccard
 
-    print("jaccard",jaccard)
-
-def eval(model, dataloader, device, criterion):
+def eval(model, dataloader, device, criterion, epoch):
     model.eval()
     running_loss = 0
     counter = 0
-
-    
     
     with torch.no_grad():
         for idx, batch in tqdm(enumerate(dataloader), 
-                                                        desc="Validation loop", 
-                                                        total=len(dataloader)):
+                               desc="Validation loop", 
+                               total=np.ceil(len(dataloader.dataset)/BATCH_SIZE)):
             counter += 1
-
             images = batch['image'].to(device)
             seg_true = batch['seg_mask'].to(device)
             
-
-            
-
             model_output = model(images)
 
             if isinstance(model_output, dict) and 'segmentation' in model_output:
@@ -173,32 +215,35 @@ def eval(model, dataloader, device, criterion):
                     seg_pred = seg_output['out']
                 else:
                     continue
-                    
-              
-          
             
             loss = criterion(seg_pred, seg_true)
             running_loss += loss.item()
             
-           
             batch_dice = calculate_dice_coefficient(seg_pred, seg_true)
             batch_iou = calculate_jaccard_index(seg_pred, seg_true)
             
-      
+            # Log validation samples to wandb (just a few samples)
+            if idx == 0:
+                log_images_to_wandb(images, seg_true, seg_pred)
     
     validation_loss = running_loss / counter if counter > 0 else float('inf')
-    
-   
     
     metrics = {
         "loss": validation_loss,
         "dice_coefficient": batch_dice,
         "jaccard_index": batch_iou,
-      
     }
     
-    print("jaccard",batch_iou)
-    print("dice_coefficient",batch_dice)
+    # Log validation metrics to wandb
+    wandb.log({
+        "val_loss": validation_loss,
+        "val_dice": batch_dice,
+        "val_iou": batch_iou,
+        "epoch": epoch
+    })
+    
+    print("jaccard", batch_iou)
+    print("dice_coefficient", batch_dice)
     return metrics
 
 def training_loop(epochs, model, train_loader, val_loader, device, optimizer, criterion, scheduler=None):
@@ -206,7 +251,6 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     valid_loss_history = []
     dice_history = []
     iou_history = []
-
     
     best_val_loss = float('inf')
     best_dice = 0.0
@@ -215,45 +259,38 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     checkpoint_dir = 'checkpoints'
     folder_check(checkpoint_dir)
     
-  
+    # Watch model in wandb
+    wandb.watch(model, log="all", log_freq=100)
     
     for epoch in range(epochs):
         print(f"Epoch {epoch+1} of {epochs}")
-  
-      
-        train_epoch_loss = train(model, train_loader, device, optimizer, criterion)
         
-      
-        val_metrics = eval(model, val_loader, device, criterion)
+        # Train for one epoch
+        train_epoch_loss = train(model, train_loader, device, optimizer, criterion, epoch)
+        
+        # Evaluate on validation set
+        val_metrics = eval(model, val_loader, device, criterion, epoch)
         valid_epoch_loss = val_metrics["loss"]
         epoch_dice = val_metrics["dice_coefficient"]
         epoch_iou = val_metrics["jaccard_index"]
-       
-      
-      
+        
         train_loss_history.append(train_epoch_loss)
         valid_loss_history.append(valid_epoch_loss)
         dice_history.append(epoch_dice)
         iou_history.append(epoch_iou)
-
         
         # Printing metrics
         print(f"Train Loss: {train_epoch_loss:.4f}")
         print(f"Val Loss: {valid_epoch_loss:.4f}")
         print(f"Mean Dice: {epoch_dice:.4f}")
         print(f"Mean IoU: {epoch_iou:.4f}")
-
         
-
-
         if scheduler is not None:
             scheduler.step(valid_epoch_loss)
         
-     
         save_model = False
         save_reason = ""
         
-
         if valid_epoch_loss < best_val_loss:
             best_val_loss = valid_epoch_loss
             save_model = True
@@ -267,32 +304,44 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
         if save_model:
             best_epoch = epoch
             
-            torch.save(model.state_dict(), 
-                       f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
-
+            model_path = f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth'
+            torch.save(model.state_dict(), model_path)
             torch.save(model.state_dict(), 'runway_segmentation_best_model.pth')
+            
+            # Log model to wandb
+            wandb.save(model_path)
+            wandb.run.summary["best_epoch"] = epoch + 1
+            wandb.run.summary["best_val_loss"] = valid_epoch_loss
+            wandb.run.summary["best_dice"] = epoch_dice
+            
             print(f"\nModel saved at epoch: {epoch + 1} (improved {save_reason})\n")
         
         print(f"------ End of Epoch {epoch + 1} -------")
-
-    
     
     print("\nPerforming final evaluation...")
-    final_metrics = eval(model, val_loader, device, criterion)
+    final_metrics = eval(model, val_loader, device, criterion, epochs)
     print(f"Validation Loss: {final_metrics['loss']:.4f}")
     print(f"Dice Coefficient: {final_metrics['dice_coefficient']:.4f}")
     print(f"Jaccard Index (IoU): {final_metrics['jaccard_index']:.4f}")
+    
+    # Load best model
     model.load_state_dict(torch.load('runway_segmentation_best_model.pth'))
+    
+    # Log final metrics to wandb
+    wandb.run.summary["final_val_loss"] = final_metrics['loss']
+    wandb.run.summary["final_dice"] = final_metrics['dice_coefficient']
+    wandb.run.summary["final_iou"] = final_metrics['jaccard_index']
+    
+    # Save loss plots
+    loss_plot(train_loss_history, valid_loss_history, dice_history, iou_history)
     
     return model, train_loss_history, valid_loss_history, dice_history, iou_history, best_val_loss, best_dice, best_epoch
 
 def loss_plot(train_loss, valid_loss, dice_history=None, iou_history=None):
     """Plot and save training and validation loss curves with metrics."""
     if dice_history is not None and iou_history is not None:
-
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
         
- 
         ax1.plot(train_loss, color='orange', label='train loss')
         ax1.plot(valid_loss, color='red', label='validation loss')
         ax1.set_xlabel('Epochs')
@@ -310,8 +359,10 @@ def loss_plot(train_loss, valid_loss, dice_history=None, iou_history=None):
         
         plt.tight_layout()
         plt.savefig('runway_segmentation_metrics.png')
+        
+        # Log figure to wandb
+        wandb.log({"metrics_plot": wandb.Image(fig)})
     else:
-
         plt.figure(figsize=(10, 7))
         plt.plot(train_loss, color='orange', label='train loss')
         plt.plot(valid_loss, color='red', label='validation loss')
@@ -319,61 +370,30 @@ def loss_plot(train_loss, valid_loss, dice_history=None, iou_history=None):
         plt.ylabel('Loss')
         plt.legend()
         plt.savefig('runway_segmentation_loss.png')
+        
+        # Log figure to wandb
+        wandb.log({"loss_plot": wandb.Image(plt)})
     
     plt.close()
 
-
-
-
-if  __name__ == "__main__":
-   
+if __name__ == "__main__":
+    # Initialize wandb
+    init_wandb(project_name="runway-segmentation")
+    
     image_dir = "/home/AD/smajumder/lard/data/"
     coordinates_csv_path = "/home/AD/smajumder/gridaero/LARD_train.csv"
-
-   
     
-
     image_paths = []
     for fname in os.listdir(image_dir):
         if fname.endswith('.jpeg'):
             image_paths.append(os.path.join(image_dir, fname))
     
-
-   
-    
     # Since we're dealing with semantic segmentation only, we'll use empty line paths
-    # The dataloader will need to be adjusted to handle this
-    #line_paths = [line_paths_dir] * len(image_paths) if os.path.exists(line_paths_dir) else [""] * len(image_paths)
     line_paths = [""] * len(image_paths)
+    
     # Split into train and validation
-    train_idx = int(len(image_paths))
+    train_idx = int(len(image_paths) * 0.8)  # 80% for training
     
-    # train_dataset = RunwayDataset(
-    #     image_paths[:train_idx],
-    #     mask_paths[:train_idx],
-    #     line_paths[:train_idx],
-    #     augment=True
-    # )
-    
-    # val_dataset = RunwayDataset(
-    #     image_paths[train_idx:],
-    #     mask_paths[train_idx:],
-    #     line_paths[train_idx:]
-    # )
-
-    # train_loader = DataLoader(
-    #     train_dataset,
-    #     batch_size=BATCH_SIZE,
-    #     shuffle=True,
-    # )
-    
-    # val_loader = DataLoader(
-    #     val_dataset,
-    #     batch_size=BATCH_SIZE,
-    #     shuffle=False,
-    # )
-    train_idx = int(len(image_paths) * 0.8)  # 80% for training, adjust as needed
-
     # Initialize datasets
     train_dataset = RunwayDataset(
         image_paths=image_paths[:train_idx],
@@ -386,24 +406,26 @@ if  __name__ == "__main__":
         coordinates_csv_path=coordinates_csv_path,
         augment=False  # No augmentation for validation
     )
-
-  
+    
+    # Log dataset information
+    wandb.log({
+        "train_dataset_size": len(train_dataset),
+        "val_dataset_size": len(val_dataset),
+        "total_images": len(image_paths)
+    })
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=BATCH_SIZE,
         shuffle=True,
-        
     )
 
     val_loader = DataLoader(
         val_dataset,
         batch_size=BATCH_SIZE,
         shuffle=False,
-
     )
-        
-        
-        
+    
     model = ERFE(num_seg_classes=NUM_SEG_CLASSES, num_line_classes=NUM_LINE_CLASSES)
     model = model.to(DEVICE)
 
@@ -411,11 +433,14 @@ if  __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=5,
-        )
-        
-
-    model, train_loss, valid_loss, best_val_loss, best_epoch = training_loop(
+        optimizer, mode='min', factor=0.5, patience=5,
+    )
+    
+    # Log model architecture
+    wandb.run.summary["model_parameters"] = sum(p.numel() for p in model.parameters())
+    
+    try:
+        model, train_loss, valid_loss, dice_history, iou_history, best_val_loss, best_dice, best_epoch = training_loop(
             epochs=NUM_EPOCHS, 
             model=model, 
             train_loader=train_loader, 
@@ -426,10 +451,9 @@ if  __name__ == "__main__":
             scheduler=scheduler
         )
 
-    loss_plot(train_loss, valid_loss)
-    print("Training complete!")
-
-
-
-
-
+        loss_plot(train_loss, valid_loss, dice_history, iou_history)
+        print("Training complete!")
+        
+    finally:
+        # Make sure to finish the wandb run even if there's an error
+        wandb.finish()
