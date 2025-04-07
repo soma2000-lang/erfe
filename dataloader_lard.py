@@ -12,7 +12,7 @@ class RunwayDataset(Dataset):
     Dataset for runway segmentation from corner coordinates.
     """
   
-    def __init__(self, image_paths, coordinates_csv_path, input_shape=(3, 640, 360), num_seg_classes=1, augment=False):
+    def __init__(self, image_paths, coordinates_csv_path, input_shape=(3, 1024, 1024), num_seg_classes=1, augment=False):
         self.image_paths = image_paths
         self.coordinates_df = pd.read_csv(coordinates_csv_path, sep=';')
         self.input_shape = input_shape
@@ -42,13 +42,7 @@ class RunwayDataset(Dataset):
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         img_name = os.path.basename(img_path).split('.')[0] #photo2 from the image directory
-      
-        
-    
-       
-      
-        
-        
+        #mask is coming from the csv 
        
         try:
             row = self.coordinates_df.iloc[idx]
@@ -73,14 +67,16 @@ class RunwayDataset(Dataset):
             mask = np.zeros((row['height'],row['width']), dtype=np.uint8)
             coordinates = [[0, 0], [0, 0], [0, 0], [0, 0]]
         
-        # Apply augmentations
+        # Applying augmentations
         if self.augment:
             # First apply preprocessing augmentations (image only)
             preprocessing = A.Compose([
-                # A.ToGray(p=0.5),
+                #A.ToGray(p=0.5),
+                A.Resize(height=1024, width=1024),
+                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 # A.CLAHE(clip_limit=2.0, tile_grid_size=(8, 8), p=0.7),
                 # A.MedianBlur(blur_limit=3, p=0.3),
-                A.Sharpen(alpha=(0.2, 0.5), lightness=(0.5, 1.0), p=0.5),
+                # A.Sharpen(alpha=(0.2, 0.5), lightness=(0.5, 1.0), p=0.5),
             ])
             
             preprocessed = preprocessing(image=image)
@@ -88,7 +84,7 @@ class RunwayDataset(Dataset):
             
             # Then apply geometric and other augmentations to both image and mask
             augmentation = A.Compose([
-                A.Resize(height=512, width=512),
+                A.Resize(height=1024, width=1024),
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
                 # A.RandomRotate90(p=0.5),
@@ -106,7 +102,7 @@ class RunwayDataset(Dataset):
                 #     p=0.7
                 # ),
                 # A.RandomGamma(gamma_limit=(80, 120), p=0.5),
-                # A.GaussianBlur(blur_limit=(1, 3), p=0.3),
+                A.GaussianBlur(blur_limit=(1, 3), p=0.3),
                 # A.RandomShadow(
                 #     shadow_roi=(0, 0, 1, 1), 
                 #     num_shadows_lower=1, 
@@ -114,7 +110,7 @@ class RunwayDataset(Dataset):
                 #     shadow_dimension=5, 
                 #     p=0.3
                 # ),
-                # A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, p=0.2),
+                A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, p=0.2),
                 # A.GridDropout(
                 #     ratio=0.1, 
                 #     unit_size_min=10, 
@@ -124,7 +120,7 @@ class RunwayDataset(Dataset):
                 #     random_offset=True, 
                 #     p=0.2
                 # ),
-                A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+                #A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 ToTensorV2(),
             ])
             
@@ -132,9 +128,9 @@ class RunwayDataset(Dataset):
             image = augmented["image"]
             mask = augmented["mask"]
         else:
-            # If no augmentation, just resize, normalize and convert to tensor
+
             transform = A.Compose([
-                A.Resize(height=512, width=512),
+                A.Resize(height=1024, width=1024),
                 A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 ToTensorV2(),
             ])
@@ -150,11 +146,8 @@ class RunwayDataset(Dataset):
         seg_mask = mask.float() 
         return {
             'image': image, 
-            'mask': mask, #image_dir mask
+       
             'coordinates': coordinates, #co-ordinates from the csv file 
             'seg_mask': seg_mask, # mask from the csv file
             'name': img_name
         }
-    # you need the mask from the c-ordiates
-    # mask from the image dir
-    # co-ordinates

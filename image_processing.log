@@ -1,0 +1,21 @@
+2025-04-07 14:23:40,705 - INFO - Starting CSV image resolution matching
+2025-04-07 14:23:40,705 - INFO - CSV: /home/AD/smajumder/gridaero/LARD_train.csv
+2025-04-07 14:23:40,705 - INFO - Input directory: /home/AD/smajumder/gridaero/reso_fixes
+2025-04-07 14:23:40,706 - INFO - Output directory: /home/AD/smajumder/gridaero/reso_fixes_kaggle
+2025-04-07 14:23:40,752 - INFO - Checking resolutions of 100 images (from 12287 total)
+2025-04-07 14:23:42,086 - INFO - Reference resolution: 2648x2448
+2025-04-07 14:23:42,166 - INFO - CSV contains 14433 rows
+2025-04-07 14:25:30,042 - INFO - Starting CSV image resolution matching
+2025-04-07 14:25:30,042 - INFO - CSV: /home/AD/smajumder/gridaero/LARD_train.csv
+2025-04-07 14:25:30,042 - INFO - Input directory: /home/AD/smajumder/gridaero/reso_fixes
+2025-04-07 14:25:30,043 - INFO - Output directory: /home/AD/smajumder/gridaero/reso_fixes_kaggle
+2025-04-07 14:25:30,093 - INFO - Checking resolutions of 100 images (from 12287 total)
+2025-04-07 14:25:31,396 - INFO - Reference resolution: 2648x2448
+2025-04-07 14:25:31,477 - INFO - CSV contains 14433 rows
+2025-04-07 14:27:23,734 - INFO - Starting CSV image resolution matching
+2025-04-07 14:27:23,734 - INFO - CSV: /home/AD/smajumder/gridaero/LARD_train.csv
+2025-04-07 14:27:23,734 - INFO - Input directory: /home/AD/smajumder/gridaero/reso_fixes
+2025-04-07 14:27:23,735 - INFO - Output directory: /home/AD/smajumder/gridaero/reso_fixes_kaggle
+2025-04-07 14:27:23,785 - INFO - Checking resolutions of 100 images (from 12287 total)
+2025-04-07 14:27:25,144 - INFO - Reference resolution: 2648x2448
+2025-04-07 14:27:25,222 - INFO - CSV contains 14433 rows
