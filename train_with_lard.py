@@ -270,7 +270,7 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
             torch.save(model.state_dict(), 
                        f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
 
-            torch.save(model.state_dict(), 'runway_segmentation_best_model.pth')
+            torch.save(model.state_dict(), 'runway_segmentation_model.pth')
             print(f"\nModel saved at epoch: {epoch + 1} (improved {save_reason})\n")
         
         print(f"------ End of Epoch {epoch + 1} -------")
@@ -282,7 +282,7 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     print(f"Validation Loss: {final_metrics['loss']:.4f}")
     print(f"Dice Coefficient: {final_metrics['dice_coefficient']:.4f}")
     print(f"Jaccard Index (IoU): {final_metrics['jaccard_index']:.4f}")
-    model.load_state_dict(torch.load('runway_segmentation_best_model.pth'))
+    model.load_state_dict(torch.load('runway_segmentation_model.pth'))
     
     return model, train_loss_history, valid_loss_history, dice_history, iou_history, best_val_loss, best_dice, best_epoch
 
