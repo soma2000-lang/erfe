@@ -78,7 +78,7 @@ def train(model, dataloader, device, optimizer, criterion):
             
         loss = criterion(seg_pred, seg_true)
         if torch.isnan(loss):
-            print(f"🚨 NaN detected in loss at batch {idx}")
+            print(f"NaN detected in loss at batch {idx}")
             print("Exiting...")
             exit(1)
         loss.backward()

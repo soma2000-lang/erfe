@@ -6,18 +6,23 @@ import cv2
 import albumentations as A
 from albumentations.pytorch import ToTensorV2
 from torch.utils.data import Dataset
-
+from config_lard import NUM_SEG_CLASSES, NUM_LINE_CLASSES
 class RunwayDataset(Dataset):
     """
     Dataset for runway segmentation from corner coordinates.
     """
   
-    def __init__(self, image_paths, coordinates_csv_path, input_shape=(3, 1024, 1024), num_seg_classes=1, augment=False):
+    def __init__(self, image_paths, coordinates_csv_path, input_shape=(3, 1024, 1024), num_seg_classes=NUM_SEG_CLASSES, augment=False):
         self.image_paths = image_paths
         self.coordinates_df = pd.read_csv(coordinates_csv_path, sep=';')
+        #self.coordinates_df['basename'] = self.coordinates_df['image'].apply(lambda x: os.path.basename(x).split('.')[0])
         self.input_shape = input_shape
         self.num_seg_classes = num_seg_classes
         self.augment = augment
+        self.img_to_row = {}
+        for idx, row in self.coordinates_df.iterrows():
+            img_basename = os.path.basename(row['image']).split('.')[0]
+            self.img_to_row[img_basename] = row
 
     def __len__(self):
         return len(self.image_paths)
@@ -34,42 +39,35 @@ class RunwayDataset(Dataset):
         
         return mask
   
+   
     def __getitem__(self, idx):
-     
-        img_path = self.image_paths[idx] #per image "/home/AD/smajumder/lard/data/photo2.jpeg"
-        # image = cv2.imread(img_path)
-        # image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        img_path = self.image_paths[idx]  
         image = cv2.imread(img_path)
         image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        img_name = os.path.basename(img_path).split('.')[0] #photo2 from the image directory
-        #mask is coming from the csv 
-       
+        
+        img_name = os.path.basename(img_path).split('.')[0]  
+
         try:
-            row = self.coordinates_df.iloc[idx]
-            
-           
-            img= os.path.basename(row['image']).split('.')[0] # from the .csv file
-            # h, w = row['height'],row['weight']
-            
+        
+          
+            row = self.img_to_row[img_name]
             coordinates = [
                     [int(row['x_A']), int(row['y_A'])],
                     [int(row['x_B']), int(row['y_B'])],
                     [int(row['x_C']), int(row['y_C'])],
                     [int(row['x_D']), int(row['y_D'])]
                 ]
-   
-                
-               
-            mask = self.create_mask_from_coordinates((row['height'],row['width']), coordinates, class_id=1)
-            
-        except (IndexError, KeyError) as e:
-            print(f"Warning: Could not find coordinates for {img}. Error: {e}")
-            mask = np.zeros((row['height'],row['width']), dtype=np.uint8)
-            coordinates = [[0, 0], [0, 0], [0, 0], [0, 0]]
         
-        # Applying augmentations
+            mask = self.create_mask_from_coordinates((1024, 1024), coordinates, class_id=1)
+            
+
+        except (IndexError, KeyError, ValueError) as e:
+            print(f"Warning: Could not find coordinates for {img_name}. Error: {e}")
+            mask = np.zeros((1024, 1024), dtype=np.uint8)
+            coordinates = [[0, 0], [0, 0], [0, 0], [0, 0]]
+     
         if self.augment:
-            # First apply preprocessing augmentations (image only)
+         
             preprocessing = A.Compose([
                 #A.ToGray(p=0.5),
                 A.Resize(height=1024, width=1024),
@@ -84,7 +82,7 @@ class RunwayDataset(Dataset):
             
             # Then apply geometric and other augmentations to both image and mask
             augmentation = A.Compose([
-                A.Resize(height=1024, width=1024),
+               # A.Resize(height=1024, width=1024),
                 A.HorizontalFlip(p=0.5),
                 A.VerticalFlip(p=0.5),
                 # A.RandomRotate90(p=0.5),
@@ -143,7 +141,9 @@ class RunwayDataset(Dataset):
             mask = mask.unsqueeze(0)
         
 
-        seg_mask = mask.float() 
+        seg_mask = mask.float()
+    
+
         return {
             'image': image, 
        
