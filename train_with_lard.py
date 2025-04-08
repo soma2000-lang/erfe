@@ -10,7 +10,7 @@ from tqdm import tqdm
 import albumentations as A
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
-
+from earlystopping import EarlyStopping
 from config_lard import (DEVICE, INPUT_SHAPE, BATCH_SIZE, LEARNING_RATE,NUM_SEG_CLASSES,NUM_EPOCHS,NUM_LINE_CLASSES)
 from model_lard import ERFE
 from loss_lard import CombinedLoss, SegmentationLoss
@@ -53,6 +53,7 @@ def train(model, dataloader, device, optimizer, criterion):
     
     for idx, batch in tqdm(enumerate(dataloader), desc="Training loop", total=len(dataloader)):
         counter += 1
+        print(device)
         images = batch['image'].to(device)
         seg_true = batch['seg_mask'].to(device)
         
@@ -75,8 +76,9 @@ def train(model, dataloader, device, optimizer, criterion):
         if not isinstance(seg_pred, torch.Tensor):
             print(f"ERROR: seg_pred is not a tensor: {type(seg_pred)}")
             continue
-            
+        seg_pred = seg_pred.to(device)
         loss = criterion(seg_pred, seg_true)
+        print(loss.item())
         if torch.isnan(loss):
             print(f"NaN detected in loss at batch {idx}")
             print("Exiting...")
@@ -146,148 +148,198 @@ def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
 
     print("jaccard",jaccard)
 
+
+    
 def eval(model, dataloader, device, criterion):
     model.eval()
     running_loss = 0
     counter = 0
-
-    
+   
+    total_intersection = 0
+    total_pred_sum = 0
+    total_target_sum = 0
     
     with torch.no_grad():
-        for idx, batch in tqdm(enumerate(dataloader), 
-                                                        desc="Validation loop", 
-                                                        total=len(dataloader)):
+        for idx, batch in tqdm(enumerate(dataloader), desc="Validation loop", total=len(dataloader)):
             counter += 1
-
             images = batch['image'].to(device)
             seg_true = batch['seg_mask'].to(device)
             
-
-            
-
             model_output = model(images)
-
+            
             if isinstance(model_output, dict) and 'segmentation' in model_output:
                 seg_output = model_output['segmentation']
                 if isinstance(seg_output, dict) and 'out' in seg_output:
                     seg_pred = seg_output['out']
                 else:
                     continue
-                    
-              
-          
             
+            seg_pred = seg_pred.to(device)
             loss = criterion(seg_pred, seg_true)
             running_loss += loss.item()
             
-           
-            batch_dice = calculate_dice_coefficient(seg_pred, seg_true)
-            batch_iou = calculate_jaccard_index(seg_pred, seg_true)
+          
+            seg_pred = torch.sigmoid(seg_pred)
             
-      
-    
-    validation_loss = running_loss / counter if counter > 0 else float('inf')
-    
    
+            intersection = (seg_pred * seg_true).sum().item()
+            pred_sum = seg_pred.sum().item()
+            target_sum = seg_true.sum().item()
+            
+            total_intersection += intersection
+            total_pred_sum += pred_sum
+            total_target_sum += target_sum
+            
+          
+            batch_dice = (2.0 * intersection + 1e-6) / (pred_sum + target_sum + 1e-6)
+            batch_jaccard = (intersection + 1e-6) / (pred_sum + target_sum - intersection + 1e-6)
+    
+
+    validation_loss = running_loss / counter if counter > 0 else float('inf')
+    global_dice = (2.0 * total_intersection + 1e-6) / (total_pred_sum + total_target_sum + 1e-6)
+    global_jaccard = (total_intersection + 1e-6) / (total_pred_sum + total_target_sum - total_intersection + 1e-6)
     
     metrics = {
         "loss": validation_loss,
-        "dice_coefficient": batch_dice,
-        "jaccard_index": batch_iou,
-      
+        "dice_coefficient": global_dice,
+        "jaccard_index": global_jaccard
     }
     
-    print("jaccard",batch_iou)
-    print("dice_coefficient",batch_dice)
+    print(f"Global Dice: {global_dice:.4f}")
+    print(f"Global Jaccard: {global_jaccard:.4f}")
+    
     return metrics
 
-def training_loop(epochs, model, train_loader, val_loader, device, optimizer, criterion, scheduler=None):
+def calculate_global_dice(predictions, targets, smooth=1e-6):
+    """
+    Calculate Dice coefficient across the entire dataset
+    
+    Args:
+        predictions (torch.Tensor): All predicted segmentation masks
+        targets (torch.Tensor): All ground truth segmentation masks
+        smooth (float): Smoothing factor to avoid division by zero
+        
+    Returns:
+        float: Global Dice coefficient
+    """
+  
+    intersection = (predictions * targets).sum()
+    union = predictions.sum() + targets.sum()
+    
+    dice = (2.0 * intersection + smooth) / (union + smooth)
+    return dice.item()
+
+def calculate_global_jaccard(predictions, targets, smooth=1e-6):
+    """
+    Calculate Jaccard index across the entire dataset
+    
+    Args:
+        predictions (torch.Tensor): All predicted segmentation masks
+        targets (torch.Tensor): All ground truth segmentation masks
+        smooth (float): Smoothing factor to avoid division by zero
+        
+    Returns:
+        float: Global Jaccard index
+    """
+    intersection = (predictions * targets).sum()
+    union = predictions.sum() + targets.sum() - intersection  # Correct union calculation for Jaccard
+    
+    jaccard = (intersection + smooth) / (union + smooth)
+    return jaccard.item()
+def training_loop(epochs, model, train_loader, val_loader, device, optimizer, criterion, scheduler=None, 
+               patience=10, min_delta=0.001):
+    """
+    Training loop with early stopping implementation
+    
+    Args:
+        epochs (int): Maximum number of epochs to train
+        model (nn.Module): PyTorch model to train
+        train_loader (DataLoader): Training data loader
+        val_loader (DataLoader): Validation data loader
+        device (torch.device): Device to train on
+        optimizer (torch.optim): Optimizer
+        criterion (nn.Module): Loss function
+        scheduler (torch.optim.lr_scheduler): Learning rate scheduler (optional)
+        patience (int): Number of epochs to wait for improvement before stopping
+        min_delta (float): Minimum change in monitored quantity to qualify as improvement
+    """
     train_loss_history = []
     valid_loss_history = []
     dice_history = []
     iou_history = []
-
-    
-    best_val_loss = float('inf')
-    best_dice = 0.0
-    best_epoch = -1
     
     checkpoint_dir = 'checkpoints'
     folder_check(checkpoint_dir)
     
-  
+
+    early_stopping = EarlyStopping(
+        patience=patience,
+        min_delta=min_delta,
+        verbose=True,
+        path=f'{checkpoint_dir}/best_model.pth'
+    )
     
     for epoch in range(epochs):
         print(f"Epoch {epoch+1} of {epochs}")
   
-      
-        train_epoch_loss = train(model, train_loader, device, optimizer, criterion)
         
-      
+        train_epoch_loss = train(model, train_loader, device, optimizer, criterion)
+
         val_metrics = eval(model, val_loader, device, criterion)
         valid_epoch_loss = val_metrics["loss"]
         epoch_dice = val_metrics["dice_coefficient"]
         epoch_iou = val_metrics["jaccard_index"]
-       
-      
       
         train_loss_history.append(train_epoch_loss)
         valid_loss_history.append(valid_epoch_loss)
         dice_history.append(epoch_dice)
         iou_history.append(epoch_iou)
 
-        
-        # Printing metrics
         print(f"Train Loss: {train_epoch_loss:.4f}")
         print(f"Val Loss: {valid_epoch_loss:.4f}")
-        print(f"Mean Dice: {epoch_dice:.4f}")
-        print(f"Mean IoU: {epoch_iou:.4f}")
-
-        
-
+        print(f"Dice Coefficient: {epoch_dice:.4f}")
+        print(f"Jaccard Index (IoU): {epoch_iou:.4f}")
 
         if scheduler is not None:
             scheduler.step(valid_epoch_loss)
         
-     
+ 
         save_model = False
         save_reason = ""
-        
+        best_val_loss = float('inf') if epoch == 0 else min(valid_loss_history[:-1])
+        best_dice = 0.0 if epoch == 0 else max(dice_history[:-1])
 
         if valid_epoch_loss < best_val_loss:
-            best_val_loss = valid_epoch_loss
             save_model = True
             save_reason = "validation loss"
       
         if epoch_dice > best_dice + 0.005:
-            best_dice = epoch_dice
             save_model = True
             save_reason = "Dice score"
             
         if save_model:
-            best_epoch = epoch
-            
             torch.save(model.state_dict(), 
-                       f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
-
-            torch.save(model.state_dict(), 'runway_segmentation_model.pth')
+                      f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
             print(f"\nModel saved at epoch: {epoch + 1} (improved {save_reason})\n")
         
-        print(f"------ End of Epoch {epoch + 1} -------")
+       
+        early_stopping(valid_epoch_loss, model)
+        if early_stopping.early_stop:
+            print(f"Early stopping triggered at epoch {epoch+1}")
+            break
+    
 
-    
-    
-    print("\nPerforming final evaluation...")
+    model.load_state_dict(torch.load(early_stopping.path))
+
     final_metrics = eval(model, val_loader, device, criterion)
-    print(f"Validation Loss: {final_metrics['loss']:.4f}")
-    print(f"Dice Coefficient: {final_metrics['dice_coefficient']:.4f}")
-    print(f"Jaccard Index (IoU): {final_metrics['jaccard_index']:.4f}")
-    model.load_state_dict(torch.load('runway_segmentation_model.pth'))
+    print(f"Final Validation Loss: {final_metrics['loss']:.4f}")
+    print(f"Final Dice Coefficient: {final_metrics['dice_coefficient']:.4f}")
+    print(f"Final Jaccard Index (IoU): {final_metrics['jaccard_index']:.4f}")
     
-    return model, train_loss_history, valid_loss_history, dice_history, iou_history, best_val_loss, best_dice, best_epoch
+    return model, train_loss_history, valid_loss_history, dice_history, iou_history
 
 def loss_plot(train_loss, valid_loss, dice_history=None, iou_history=None):
-    """Plot and save training and validation loss curves with metrics."""
+    """Plotting and saving training and validation loss curves with metrics."""
     if dice_history is not None and iou_history is not None:
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
@@ -335,8 +387,7 @@ if  __name__ == "__main__":
 
     image_paths = []
     for fname in os.listdir(image_dir):
-        if fname.endswith('.jpeg'):
-            image_paths.append(os.path.join(image_dir, fname))
+        image_paths.append(os.path.join(image_dir, fname))
     
 
    
@@ -345,7 +396,7 @@ if  __name__ == "__main__":
     # The dataloader will need to be adjusted to handle this
     #line_paths = [line_paths_dir] * len(image_paths) if os.path.exists(line_paths_dir) else [""] * len(image_paths)
     line_paths = [""] * len(image_paths)
-    # Split into train and validation
+  
     train_idx = int(len(image_paths))
     
     # train_dataset = RunwayDataset(
@@ -372,7 +423,7 @@ if  __name__ == "__main__":
     #     batch_size=BATCH_SIZE,
     #     shuffle=False,
     # )
-    train_idx = int(len(image_paths) * 0.8)  # 80% for training, adjust as needed
+    train_idx = int(len(image_paths) * 0.8)  # 80% for training, 
 
     # Initialize datasets
     train_dataset = RunwayDataset(
@@ -407,7 +458,7 @@ if  __name__ == "__main__":
     model = ERFE(num_seg_classes=NUM_SEG_CLASSES, num_line_classes=NUM_LINE_CLASSES)
     model = model.to(DEVICE)
 
-    criterion = CombinedLoss()
+    criterion = CombinedLoss(device=DEVICE)
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
     
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
