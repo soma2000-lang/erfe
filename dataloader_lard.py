@@ -84,33 +84,33 @@ class RunwayDataset(Dataset):
                 A.Resize(height=1024, width=1024),
                 A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
                 A.HorizontalFlip(p=0.5),
-                A.VerticalFlip(p=0.5),
-                A.GaussianBlur(blur_limit=(1, 3), p=0.3),
-                A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, p=0.2),
-                A.RandomRotate90(p=0.5),
-                A.ShiftScaleRotate(
-                  shift_limit=0.05, 
-                   scale_limit=0.1, 
-                  rotate_limit=15, 
-                  border_mode=cv2.BORDER_CONSTANT, 
-                  p=0.7
-                ),
-                 A.RandomShadow(
-                 shadow_roi=(0, 0, 1, 1), 
-                 num_shadows_lower=1, 
-                  num_shadows_upper=2, 
-                  shadow_dimension=5, 
-                    p=0.3
-                 ),
-                A.GridDropout(
-                    ratio=0.1, 
-                    unit_size_min=10, 
-                    unit_size_max=40, 
-                    holes_number_x=4, 
-                    holes_number_y=4, 
-                    random_offset=True, 
-                   p=0.2
-                ),
+                # A.VerticalFlip(p=0.5),
+                # A.GaussianBlur(blur_limit=(1, 3), p=0.3),
+                # A.RandomFog(fog_coef_lower=0.1, fog_coef_upper=0.3, alpha_coef=0.1, p=0.2),
+                # A.RandomRotate90(p=0.5),
+                # A.ShiftScaleRotate(
+                #   shift_limit=0.05, 
+                #    scale_limit=0.1, 
+                #   rotate_limit=15, 
+                #   border_mode=cv2.BORDER_CONSTANT, 
+                #   p=0.7
+                # ),
+                #  A.RandomShadow(
+                #  shadow_roi=(0, 0, 1, 1), 
+                #  num_shadows_lower=1, 
+                #   num_shadows_upper=2, 
+                #   shadow_dimension=5, 
+                #     p=0.3
+                #  ),
+                # A.GridDropout(
+                #     ratio=0.1, 
+                #     unit_size_min=10, 
+                #     unit_size_max=40, 
+                #     holes_number_x=4, 
+                #     holes_number_y=4, 
+                #     random_offset=True, 
+                #    p=0.2
+                # ),
                 ToTensorV2(),
             ])
         else:

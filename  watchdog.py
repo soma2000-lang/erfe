@@ -32,7 +32,7 @@ if __name__ == "__main__":
         idle_time = (time.time() - last_active_time) / 60  # in minutes
 
         if idle_time > TIMEOUT_MINUTES:
-            print(f"\n⚠️ GPU idle for {idle_time:.2f} minutes. Killing training process... ⚠️")
+            print(" GPU idle for {idle_time:.2f} minutes. Killing training process... ⚠️")
 
             # Kill all processes matching TRAIN_KEYWORD
             try:

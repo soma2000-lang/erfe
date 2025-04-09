@@ -7,6 +7,8 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 from tqdm import tqdm
+
+import argparse
 import albumentations as A
 from torch.utils.data import DataLoader, Dataset
 from torchvision import transforms
@@ -97,67 +99,160 @@ def train(model, dataloader, device, optimizer, criterion):
   
     return training_loss
 
-def calculate_dice_coefficient(seg_pred,seg_true , smooth=1e-6):
-    """
-    Calculate Dice coefficient for segmentation evaluation.
+# def calculate_dice_coefficient(seg_pred,seg_true , smooth=1e-6):
+#     """
+#     Calculate Dice coefficient for segmentation evaluation.
     
-    Args:
-        seg_pred (torch.Tensor): Predicted segmentation mask (B, C, H, W) before softmax
-        target (torch.Tensor): Ground truth segmentation mask (B, H, W)
-        smooth (float): Smoothing factor to avoid division by zero
+#     Args:
+#         seg_pred (torch.Tensor): Predicted segmentation mask (B, C, H, W) before softmax
+#         target (torch.Tensor): Ground truth segmentation mask (B, H, W)
+#         smooth (float): Smoothing factor to avoid division by zero
         
-    Returns:
-        dict: Dice coefficients for each class and mean Dice
-    """
+#     Returns:
+#         dict: Dice coefficients for each class and mean Dice
+#     """
 
-    seg_pred = F.sigmoid(seg_pred) #continuous probrability
+#     seg_pred = F.sigmoid(seg_pred) #continuous probrability
     
 
-    intersection = (seg_pred * seg_true).sum()
-    union = seg_pred.sum() + seg_true.sum()
-    dice = (2.0 * intersection + smooth) / (union + smooth)
+#     intersection = (seg_pred * seg_true).sum()
+#     union = seg_pred.sum() + seg_true.sum()
+#     dice = (2.0 * intersection + smooth) / (union + smooth)
     
 
-    print("dice_coefficient",dice)
+#     print("dice_coefficient",dice)
    
     
     
-    return dice
+#     return dice
 
-def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
-    """
-    Calculate Jaccard index (IoU) for segmentation evaluation.
+# def calculate_jaccard_index(seg_pred, seg_true, smooth=1e-6):
+#     """
+#     Calculate Jaccard index (IoU) for segmentation evaluation.
     
-    Args:
-        seg_pred (torch.Tensor): Predicted segmentation mask (B, C, H, W) before sigmoid
-        target (torch.Tensor): Ground truth segmentation mask (B, H, W)
-        smooth (float): Smoothing factor to avoid division by zero
+#     Args:
+#         seg_pred (torch.Tensor): Predicted segmentation mask (B, C, H, W) before sigmoid
+#         target (torch.Tensor): Ground truth segmentation mask (B, H, W)
+#         smooth (float): Smoothing factor to avoid division by zero
         
-    Returns:
-        dict: Jaccard indices for each class and mean IoU
-    """
+#     Returns:
+#         dict: Jaccard indices for each class and mean IoU
+#     """
     
     
-    seg_pred = F.sigmoid(seg_pred) #continuous probrability
+#     seg_pred = F.sigmoid(seg_pred) #continuous probrability
         
 
-    intersection = (seg_pred * seg_true).sum()
-    union = seg_pred.sum() + seg_true.sum()
+#     intersection = (seg_pred * seg_true).sum()
+#     union = seg_pred.sum() + seg_true.sum()
+#     jaccard = (intersection + smooth) / (union + smooth)
+        
+
+#     print("jaccard",jaccard)
+def calculate_jaccard_index(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
+    """
+    Calculate Jaccard index (IoU) with thresholding for binary segmentation.
+    """
+
+
+    pred_binary = (seg_pred > threshold).float()
+    
+    intersection = (pred_binary * seg_true).sum()
+   
+    union = pred_binary.sum() + seg_true.sum() - intersection
     jaccard = (intersection + smooth) / (union + smooth)
-        
+    
+    return jaccard.item()
+def calculate_dice_coefficient(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
+    """
+    Calculate Dice coefficient with thresholding for binary segmentation.
+    """
+   
+    pred_binary = (seg_pred> threshold).float()
+    
+    intersection = (pred_binary * seg_true).sum()
+    union = pred_binary.sum() + seg_true.sum()
+    dice = (2.0 * intersection + smooth) / (union + smooth)
+    
+    return dice.item()
 
-    print("jaccard",jaccard)
+
 
 
     
-def eval(model, dataloader, device, criterion):
+# def eval(model, dataloader, device, criterion):
+#     model.eval()
+#     running_loss = 0
+#     counter = 0
+   
+#     total_intersection = 0
+#     total_pred_sum = 0
+#     total_target_sum = 0
+    
+#     with torch.no_grad():
+#         for idx, batch in tqdm(enumerate(dataloader), desc="Validation loop", total=len(dataloader)):
+#             counter += 1
+#             images = batch['image'].to(device)
+#             seg_true = batch['seg_mask'].to(device)
+            
+#             model_output = model(images)
+            
+#             if isinstance(model_output, dict) and 'segmentation' in model_output:
+#                 seg_output = model_output['segmentation']
+#                 if isinstance(seg_output, dict) and 'out' in seg_output:
+#                     seg_pred = seg_output['out']
+#                 else:
+#                     continue
+#             seg_pred = torch.sigmoid(seg_pred)
+#             seg_pred = seg_pred.to(device)
+#             loss = criterion(seg_pred, seg_true)
+#             running_loss += loss.item()
+            
+          
+
+   
+#             intersection = (seg_pred * seg_true).sum().item()
+#             pred_sum = seg_pred.sum().item()
+#             target_sum = seg_true.sum().item()
+            
+#             total_intersection += intersection
+#             total_pred_sum += pred_sum
+#             total_target_sum += target_sum
+            
+          
+#             # batch_dice = (2.0 * intersection + 1e-6) / (pred_sum + target_sum + 1e-6)
+#             # batch_jaccard = (intersection + 1e-6) / (pred_sum + target_sum - intersection + 1e-6)
+#             batch_dice = calculate_dice_coefficient(seg_pred,seg_true)
+#             batch_jaccard = calculate_jaccard_index(seg_pred,seg_true)
+    
+
+#     validation_loss = running_loss / counter if counter > 0 else float('inf')
+#     global_dice = (2.0 * total_intersection + 1e-6) / (total_pred_sum + total_target_sum + 1e-6)
+#     global_jaccard = (total_intersection + 1e-6) / (total_pred_sum + total_target_sum - total_intersection + 1e-6)
+    
+#     metrics = {
+#         "loss": validation_loss,
+#         "dice_coefficient": batch_dice,
+#         "jaccard_index": batch_jaccard
+#     }
+#     print("batch_dice",batch_dice)
+#     print("batch_jaccard",batch_jaccard)
+#     print(f"Global Dice: {global_dice:.4f}")
+#     print(f"Global Jaccard: {global_jaccard:.4f}")
+    
+#     return metrics
+def eval(model, dataloader, device, criterion, threshold=0.5, smooth=1e-6):
     model.eval()
     running_loss = 0
     counter = 0
-   
-    total_intersection = 0
-    total_pred_sum = 0
-    total_target_sum = 0
+    
+  
+    total_intersection_thresholded = 0
+    total_pred_sum_thresholded = 0
+    total_target_sum_thresholded = 0
+    total_union_thresholded = 0  
+    batch_dice_values = []
+    batch_jaccard_values = []
     
     with torch.no_grad():
         for idx, batch in tqdm(enumerate(dataloader), desc="Validation loop", total=len(dataloader)):
@@ -174,39 +269,57 @@ def eval(model, dataloader, device, criterion):
                 else:
                     continue
             
+ 
+            seg_pred = torch.sigmoid(seg_pred)
             seg_pred = seg_pred.to(device)
+            
+    
             loss = criterion(seg_pred, seg_true)
             running_loss += loss.item()
+  
+            pred_binary = (seg_pred > threshold).float()
             
-          
-            seg_pred = torch.sigmoid(seg_pred)
+
+            batch_intersection = (pred_binary * seg_true).sum().item()
+            batch_pred_sum = pred_binary.sum().item()
+            batch_target_sum = seg_true.sum().item()
+            batch_union = batch_pred_sum + batch_target_sum - batch_intersection
             
-   
-            intersection = (seg_pred * seg_true).sum().item()
-            pred_sum = seg_pred.sum().item()
-            target_sum = seg_true.sum().item()
+
+            total_intersection_thresholded += batch_intersection
+            total_pred_sum_thresholded += batch_pred_sum
+            total_target_sum_thresholded += batch_target_sum
+            total_union_thresholded += batch_union
             
-            total_intersection += intersection
-            total_pred_sum += pred_sum
-            total_target_sum += target_sum
+      
+            batch_dice = (2.0 * batch_intersection + smooth) / (batch_pred_sum + batch_target_sum + smooth)
+            batch_jaccard = (batch_intersection + smooth) / (batch_union + smooth)
             
-          
-            batch_dice = (2.0 * intersection + 1e-6) / (pred_sum + target_sum + 1e-6)
-            batch_jaccard = (intersection + 1e-6) / (pred_sum + target_sum - intersection + 1e-6)
-    
+            batch_dice_values.append(batch_dice)
+            batch_jaccard_values.append(batch_jaccard)
 
     validation_loss = running_loss / counter if counter > 0 else float('inf')
-    global_dice = (2.0 * total_intersection + 1e-6) / (total_pred_sum + total_target_sum + 1e-6)
-    global_jaccard = (total_intersection + 1e-6) / (total_pred_sum + total_target_sum - total_intersection + 1e-6)
+    
+  
+    global_dice_thresholded = (2.0 * total_intersection_thresholded + smooth) / (total_pred_sum_thresholded + total_target_sum_thresholded + smooth)
+    global_jaccard_thresholded = (total_intersection_thresholded + smooth) / (total_union_thresholded + smooth)
+    
+
+    avg_batch_dice = sum(batch_dice_values) / len(batch_dice_values) if batch_dice_values else 0
+    avg_batch_jaccard = sum(batch_jaccard_values) / len(batch_jaccard_values) if batch_jaccard_values else 0
     
     metrics = {
         "loss": validation_loss,
-        "dice_coefficient": global_dice,
-        "jaccard_index": global_jaccard
+        "dice_coefficient": global_dice_thresholded,
+        "jaccard_index": global_jaccard_thresholded,
+        "avg_batch_dice": avg_batch_dice,
+        "avg_batch_jaccard": avg_batch_jaccard
     }
     
-    print(f"Global Dice: {global_dice:.4f}")
-    print(f"Global Jaccard: {global_jaccard:.4f}")
+    print(f"Average Batch Dice: {avg_batch_dice:.4f}")
+    print(f"Average Batch Jaccard: {avg_batch_jaccard:.4f}")
+    print(f"Global Dice (thresholded): {global_dice_thresholded:.4f}")
+    print(f"Global Jaccard (thresholded): {global_jaccard_thresholded:.4f}")
     
     return metrics
 
@@ -383,7 +496,11 @@ if  __name__ == "__main__":
     coordinates_csv_path = "/home/AD/smajumder/gridaero/LARD_train.csv"
 
    
+    parser = argparse.ArgumentParser(description='Runway Segmentation Training')
+    parser.add_argument('--resume', type=str, default=None,
+                        help='Path to checkpoint to resume training from')
     
+    args = parser.parse_args()
 
     image_paths = []
     for fname in os.listdir(image_dir):
@@ -423,8 +540,7 @@ if  __name__ == "__main__":
     #     batch_size=BATCH_SIZE,
     #     shuffle=False,
     # )
-    train_idx = int(len(image_paths) * 0.8)  # 80% for training, 
-
+    train_idx = int(len(image_paths) * 0.9)  
     # Initialize datasets
     train_dataset = RunwayDataset(
         image_paths=image_paths[:train_idx],
@@ -459,7 +575,7 @@ if  __name__ == "__main__":
     model = model.to(DEVICE)
 
     criterion = CombinedLoss(device=DEVICE)
-    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE,weight_decay=1e-4)
     
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', factor=0.5, patience=5,
