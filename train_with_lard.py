@@ -177,70 +177,6 @@ def calculate_dice_coefficient(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
     return dice.item()
 
 
-
-
-    
-# def eval(model, dataloader, device, criterion):
-#     model.eval()
-#     running_loss = 0
-#     counter = 0
-   
-#     total_intersection = 0
-#     total_pred_sum = 0
-#     total_target_sum = 0
-    
-#     with torch.no_grad():
-#         for idx, batch in tqdm(enumerate(dataloader), desc="Validation loop", total=len(dataloader)):
-#             counter += 1
-#             images = batch['image'].to(device)
-#             seg_true = batch['seg_mask'].to(device)
-            
-#             model_output = model(images)
-            
-#             if isinstance(model_output, dict) and 'segmentation' in model_output:
-#                 seg_output = model_output['segmentation']
-#                 if isinstance(seg_output, dict) and 'out' in seg_output:
-#                     seg_pred = seg_output['out']
-#                 else:
-#                     continue
-#             seg_pred = torch.sigmoid(seg_pred)
-#             seg_pred = seg_pred.to(device)
-#             loss = criterion(seg_pred, seg_true)
-#             running_loss += loss.item()
-            
-          
-
-   
-#             intersection = (seg_pred * seg_true).sum().item()
-#             pred_sum = seg_pred.sum().item()
-#             target_sum = seg_true.sum().item()
-            
-#             total_intersection += intersection
-#             total_pred_sum += pred_sum
-#             total_target_sum += target_sum
-            
-          
-#             # batch_dice = (2.0 * intersection + 1e-6) / (pred_sum + target_sum + 1e-6)
-#             # batch_jaccard = (intersection + 1e-6) / (pred_sum + target_sum - intersection + 1e-6)
-#             batch_dice = calculate_dice_coefficient(seg_pred,seg_true)
-#             batch_jaccard = calculate_jaccard_index(seg_pred,seg_true)
-    
-
-#     validation_loss = running_loss / counter if counter > 0 else float('inf')
-#     global_dice = (2.0 * total_intersection + 1e-6) / (total_pred_sum + total_target_sum + 1e-6)
-#     global_jaccard = (total_intersection + 1e-6) / (total_pred_sum + total_target_sum - total_intersection + 1e-6)
-    
-#     metrics = {
-#         "loss": validation_loss,
-#         "dice_coefficient": batch_dice,
-#         "jaccard_index": batch_jaccard
-#     }
-#     print("batch_dice",batch_dice)
-#     print("batch_jaccard",batch_jaccard)
-#     print(f"Global Dice: {global_dice:.4f}")
-#     print(f"Global Jaccard: {global_jaccard:.4f}")
-    
-#     return metrics
 def eval(model, dataloader, device, criterion, threshold=0.5, smooth=1e-6):
     model.eval()
     running_loss = 0
@@ -380,6 +316,7 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     valid_loss_history = []
     dice_history = []
     iou_history = []
+    best_checkpoint = None
     
     checkpoint_dir = 'checkpoints'
     folder_check(checkpoint_dir)
@@ -428,26 +365,41 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
       
         if epoch_dice > best_dice + 0.005:
             save_model = True
+        #     best_checkpoint = {
+        #     'epoch': epoch,
+        #     'model_state_dict': model.state_dict(),
+        #     'optimizer_state_dict': optimizer.state_dict(),
+        #     'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None,
+        # }
             save_reason = "Dice score"
             
+        # if save_model:
+        #     torch.save(model.state_dict(), 
+        #               f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}._dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
+        #     print(f"\nModel saved at epoch: {epoch + 1} (improved {save_reason})\n")
         if save_model:
-            torch.save(model.state_dict(), 
-                      f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
+            checkpoint = {
+                'epoch': epoch,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'scheduler_state_dict': scheduler.state_dict() if scheduler is not None else None,
+            }
+            torch.save(checkpoint, 
+                    f'{checkpoint_dir}/runway_seg_epoch_{epoch}_loss_{valid_epoch_loss:.3f}_dice_{epoch_dice:.3f}_iou_{epoch_iou:.3f}.pth')
             print(f"\nModel saved at epoch: {epoch + 1} (improved {save_reason})\n")
-        
+
        
-        early_stopping(valid_epoch_loss, model)
+        early_stopping(valid_epoch_loss,epoch_dice,model)
         if early_stopping.early_stop:
             print(f"Early stopping triggered at epoch {epoch+1}")
             break
     
+        if best_checkpoint is not None:
+            torch.save(best_checkpoint, os.path.join(checkpoint_dir, 'best_model.pth'))
+    
+ 
 
-    model.load_state_dict(torch.load(early_stopping.path))
-
-    final_metrics = eval(model, val_loader, device, criterion)
-    print(f"Final Validation Loss: {final_metrics['loss']:.4f}")
-    print(f"Final Dice Coefficient: {final_metrics['dice_coefficient']:.4f}")
-    print(f"Final Jaccard Index (IoU): {final_metrics['jaccard_index']:.4f}")
+   
     
     return model, train_loss_history, valid_loss_history, dice_history, iou_history
 
@@ -580,6 +532,18 @@ if  __name__ == "__main__":
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
             optimizer, mode='min', factor=0.5, patience=5,
         )
+    start_epoch = 0
+
+    if args.resume is not None:
+ 
+        checkpoint = torch.load(args.resume, map_location=DEVICE)
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if checkpoint.get('scheduler_state_dict') is not None:
+            scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+        start_epoch = checkpoint['epoch'] + 1
+        print(f"Resumed training from epoch {start_epoch}")
+
         
 
     model, train_loss, valid_loss, best_val_loss, best_epoch = training_loop(
