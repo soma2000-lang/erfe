@@ -11,7 +11,7 @@ model = ERFE(num_seg_classes=NUM_SEG_CLASSES, num_line_classes=NUM_LINE_CLASSES)
 # model.load_state_dict(torch.load('checkpoints/best_model.pth', map_location=DEVICE))
 
 checkpoint = torch.load('checkpoints/runway_seg_epoch_6_loss_0.693_dice_0.909_iou_0.833.pth', map_location=DEVICE)
-model.load_state_dict(checkpoint['model_state_dict'])  # Extract just the model part
+model.load_state_dict(checkpoint['model_state_dict'])  
 model.eval()
 
 

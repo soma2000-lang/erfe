@@ -297,21 +297,7 @@ def calculate_global_jaccard(predictions, targets, smooth=1e-6):
     return jaccard.item()
 def training_loop(epochs, model, train_loader, val_loader, device, optimizer, criterion, scheduler=None, 
                patience=10, min_delta=0.001):
-    """
-    Training loop with early stopping implementation
-    
-    Args:
-        epochs (int): Maximum number of epochs to train
-        model (nn.Module): PyTorch model to train
-        train_loader (DataLoader): Training data loader
-        val_loader (DataLoader): Validation data loader
-        device (torch.device): Device to train on
-        optimizer (torch.optim): Optimizer
-        criterion (nn.Module): Loss function
-        scheduler (torch.optim.lr_scheduler): Learning rate scheduler (optional)
-        patience (int): Number of epochs to wait for improvement before stopping
-        min_delta (float): Minimum change in monitored quantity to qualify as improvement
-    """
+
     train_loss_history = []
     valid_loss_history = []
     dice_history = []
@@ -404,7 +390,7 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     return model, train_loss_history, valid_loss_history, dice_history, iou_history
 
 def loss_plot(train_loss, valid_loss, dice_history=None, iou_history=None):
-    """Plotting and saving training and validation loss curves with metrics."""
+ 
     if dice_history is not None and iou_history is not None:
 
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 6))
