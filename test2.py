@@ -385,7 +385,7 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
         pbar.update(current_batch_size)
         
         # Postprocess batch
-        binary_masks_batch = postprocess_masks(mask_logits_batch, threshold, apply_sigmoid=apply_sigmoid)
+        binary_masks_batch = postprocess_masks(mask_logits_batch, threshold,apply_sigmoid=apply_sigmoid)
         original_masks_batch = map_to_original_sizes(binary_masks_batch, batch_shapes, scale_infos)
         
         # Process each result in the batch
@@ -448,10 +448,10 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
 
 # Main execution
 def main():
-    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model4.onnx"
-    input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/images"
-    test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/annotations.json"
-    output_dir = "/home/AD/smajumder/lards_test_exp"
+    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model5.onnx"
+    input_image_dir = "/home/AD/smajumder/bars/bars_test_coco/Test/data"
+    test_json_path = "/home/AD/smajumder/bars/bars_test_coco/Test/annotations.json"
+    output_dir = "/home/AD/smajumder/bars_test_exp"
     batch_size = 6
     apply_sigmoid = True
     use_gpu = True  

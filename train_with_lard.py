@@ -23,18 +23,7 @@ def folder_check(folder_path):
         os.makedirs(folder_path)
 
 def create_mask_from_coordinates(image_shape, coordinates, class_id=1):
-    """
-    Create a binary mask from runway corner coordinates.
     
-    Args:
-        image_shape: Tuple of (height, width) for the resulting mask
-        coordinates: List of [x, y] coordinates for the four corners of the runway
-        class_id: Class ID to use for the runway (default: 1)
-        
-    Returns:
-        np.ndarray: Binary mask with runway region labeled with class_id
-    """
-   
     mask = np.zeros(image_shape, dtype=np.uint8)
     
  
@@ -149,7 +138,7 @@ def train(model, dataloader, device, optimizer, criterion):
         
 
 #     print("jaccard",jaccard)
-def calculate_jaccard_index(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
+def calculate_jaccard_index(seg_pred, seg_true, threshold=0.1, smooth=1e-6):
     """
     Calculate Jaccard index (IoU) with thresholding for binary segmentation.
     """
@@ -163,7 +152,7 @@ def calculate_jaccard_index(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
     jaccard = (intersection + smooth) / (union + smooth)
     
     return jaccard.item()
-def calculate_dice_coefficient(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
+def calculate_dice_coefficient(seg_pred, seg_true, threshold=0.1, smooth=1e-6):
     """
     Calculate Dice coefficient with thresholding for binary segmentation.
     """
@@ -177,7 +166,7 @@ def calculate_dice_coefficient(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
     return dice.item()
 
 
-def eval(model, dataloader, device, criterion, threshold=0.5, smooth=1e-6):
+def eval(model, dataloader, device, criterion, threshold=0.1, smooth=1e-6):
     model.eval()
     running_loss = 0
     counter = 0
@@ -279,17 +268,7 @@ def calculate_global_dice(predictions, targets, smooth=1e-6):
     return dice.item()
 
 def calculate_global_jaccard(predictions, targets, smooth=1e-6):
-    """
-    Calculate Jaccard index across the entire dataset
-    
-    Args:
-        predictions (torch.Tensor): All predicted segmentation masks
-        targets (torch.Tensor): All ground truth segmentation masks
-        smooth (float): Smoothing factor to avoid division by zero
-        
-    Returns:
-        float: Global Jaccard index
-    """
+ 
     intersection = (predictions * targets).sum()
     union = predictions.sum() + targets.sum() - intersection  # Correct union calculation for Jaccard
     
