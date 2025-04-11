@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import os
 import pandas as pd
 from tqdm import tqdm
-import logging
+
 import argparse
 import albumentations as A
 from torch.utils.data import DataLoader, Dataset
@@ -545,7 +545,6 @@ if  __name__ == "__main__":
 
     loss_plot(train_loss, valid_loss)
     print("Training complete!")
-
 
 
 
