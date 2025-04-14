@@ -57,7 +57,7 @@ def preprocess_image(image, max_size=1024):
             )
         )
     aug_transforms.append(A.Sequential(rescale_transforms, p=1.0))
-    aug_transforms.append(A.Normalize(p=1.0))
+    aug_transforms.append(A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
     
     transform = A.Compose(aug_transforms)
     transformed = transform(image=image)
@@ -256,9 +256,9 @@ def evaluate_coco(pred_results, gt_json_path):
     coco_eval.summarize()
     
     # Get metrics
-    ap50 = coco_eval.stats[1]  # AP at IoU=0.50
+    ap50 = coco_eval.stats[1]  # AP at IoU=0.10
     ap75 = coco_eval.stats[2]  # AP at IoU=0.75
-    mAP = coco_eval.stats[0]   # AP at IoU=0.50:0.95
+    mAP = coco_eval.stats[0]   # AP at IoU=0.10:0.95
     
     return {
         'AP@50': ap50,
@@ -448,11 +448,11 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
 
 # Main execution
 def main():
-    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model4.onnx"
+    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model7.onnx"
     input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/images"
     test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/annotations.json"
     output_dir = "/home/AD/smajumder/lards_test_exp"
-    batch_size = 6
+    batch_size = 4
     apply_sigmoid = True
     use_gpu = True  
     save_pred = 10

@@ -1,3 +1,5 @@
+import os
+os.environ["PYTORCH_CUDA_ALLOC_CONF"] = "expandable_segments:True"
 import torch
 import torch.nn.functional as F
 import torch.optim as optim
@@ -53,19 +55,39 @@ def train(model, dataloader, device, optimizer, criterion):
         model_output = model(images)
         
         # Extract segmentation output
-        if isinstance(model_output, dict) and 'segmentation' in model_output:
-            seg_output = model_output['segmentation']
-            if isinstance(seg_output, dict) and 'out' in seg_output:
-                seg_pred = seg_output['out']
-            else:
-                print(f"ERROR: Unexpected segmentation output structure: {type(seg_output)}")
-                continue
-        else:
-            print("ERROR: Model output is not a dictionary")
-            continue
+        # if isinstance(model_output, dict) and 'segmentation' in model_output:
+        #     seg_output = model_output['segmentation']
+        #     if isinstance(seg_output, dict) and 'out' in seg_output:
+        #         seg_pred = seg_output['out']
+        #     else:
+        #         print(f"ERROR: Unexpected segmentation output structure: {type(seg_output)}")
+        #         continue
+        # else:
+        #     print("ERROR: Model output is not a dictionary")
+        #     continue
             
-        if not isinstance(seg_pred, torch.Tensor):
-            print(f"ERROR: seg_pred is not a tensor: {type(seg_pred)}")
+        # if not isinstance(seg_pred, torch.Tensor):
+        #     print(f"ERROR: seg_pred is not a tensor: {type(seg_pred)}")
+        #     continue
+        if isinstance(model_output, dict):
+            if 'segmentation' in model_output:
+                seg_output = model_output['segmentation']
+                if isinstance(seg_output, dict) and 'out' in seg_output:
+                    seg_pred = seg_output['out']
+                elif isinstance(seg_output, torch.Tensor):
+                    seg_pred = seg_output
+                else:
+                    print(f"ERROR: Unexpected segmentation output structure: {type(seg_output)}")
+                    continue
+            elif 'out' in model_output:  
+                seg_pred = model_output['out']
+            else:
+                print("ERROR: Model output structure not recognized")
+                continue
+        elif isinstance(model_output, torch.Tensor):  
+            seg_pred = model_output
+        else:
+            print("ERROR: Model output is not a dictionary or tensor")
             continue
         seg_pred = seg_pred.to(device)
         loss = criterion(seg_pred, seg_true)
@@ -77,12 +99,18 @@ def train(model, dataloader, device, optimizer, criterion):
         loss.backward()
         running_loss += loss.item()
         optimizer.step()
+        del images, seg_true, model_output, seg_output, seg_pred, loss
+        if idx % 4 == 0: 
+            torch.cuda.empty_cache()
     
     training_loss = running_loss / counter if counter > 0 else float('inf')
     print("training loss", training_loss)
     print(f"After training: memory allocated: {torch.cuda.memory_allocated() / 1024 ** 2:.2f} MB")
     print(f"After training: memory reserved: {torch.cuda.memory_reserved() / 1024 ** 2:.2f} MB")
-    torch.cuda.synchronize()  # waiting
+    torch.cuda.synchronize()
+    torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
+    torch.cuda.synchronize()
     
 
   
@@ -222,6 +250,10 @@ def eval(model, dataloader, device, criterion, threshold=0.1, smooth=1e-6):
             
             batch_dice_values.append(batch_dice)
             batch_jaccard_values.append(batch_jaccard)
+            del images, seg_true, model_output, seg_output, seg_pred, pred_binary
+            if idx % 4 == 0:  
+                torch.cuda.empty_cache()
+
 
     validation_loss = running_loss / counter if counter > 0 else float('inf')
     
@@ -245,6 +277,8 @@ def eval(model, dataloader, device, criterion, threshold=0.1, smooth=1e-6):
     print(f"Average Batch Jaccard: {avg_batch_jaccard:.4f}")
     print(f"Global Dice (thresholded): {global_dice_thresholded:.4f}")
     print(f"Global Jaccard (thresholded): {global_jaccard_thresholded:.4f}")
+    torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
     
     return metrics
 
@@ -283,7 +317,7 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     iou_history = []
     best_checkpoint = None
     
-    checkpoint_dir = 'checkpoints'
+    checkpoint_dir = 'Selective_checkpoint'
     folder_check(checkpoint_dir)
     
 
@@ -293,12 +327,15 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
         verbose=True,
         path=f'{checkpoint_dir}/best_model.pth'
     )
-    
+    torch.cuda.empty_cache()
+    torch.cuda.ipc_collect()
     for epoch in range(epochs):
         print(f"Epoch {epoch+1} of {epochs}")
   
         
         train_epoch_loss = train(model, train_loader, device, optimizer, criterion)
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
 
         val_metrics = eval(model, val_loader, device, criterion)
         valid_epoch_loss = val_metrics["loss"]
@@ -361,6 +398,9 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     
         if best_checkpoint is not None:
             torch.save(best_checkpoint, os.path.join(checkpoint_dir, 'best_model.pth'))
+        torch.cuda.empty_cache()
+        torch.cuda.ipc_collect()
+        torch.cuda.synchronize()
     
  
 
@@ -458,11 +498,12 @@ if  __name__ == "__main__":
     #     shuffle=False,
     # )
     train_idx = int(len(image_paths) * 0.9)  
-    # Initialize datasets
+   
     train_dataset = RunwayDataset(
         image_paths=image_paths[:train_idx],
         coordinates_csv_path=coordinates_csv_path,
         augment=True
+      
     )
 
     val_dataset = RunwayDataset(
@@ -476,6 +517,8 @@ if  __name__ == "__main__":
         train_dataset,
         batch_size=BATCH_SIZE,
         shuffle=True,
+        num_workers=4,
+        pin_memory=True
         
     )
 
@@ -483,6 +526,8 @@ if  __name__ == "__main__":
         val_dataset,
         batch_size=BATCH_SIZE,
         shuffle=False,
+        num_workers=4,
+        pin_memory=True
 
     )
         
@@ -495,7 +540,7 @@ if  __name__ == "__main__":
     optimizer = optim.Adam(model.parameters(), lr=LEARNING_RATE,weight_decay=1e-4)
     
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            optimizer, mode='min', factor=0.5, patience=5,
+            optimizer, mode='min', factor=0.1, patience=5,
         )
     start_epoch = 0
 
