@@ -82,25 +82,41 @@ class RunwayDataset(Dataset):
 
         return mask
     
+   
     def preprocessaugment_image(self, image, mask):
-        common_transforms = [
-            A.LongestMaxSize(1024),
-            A.PadIfNeeded(1024, 1024, border_mode=cv2.BORDER_CONSTANT, value=[255, 255, 255]),
-            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
-            ToTensorV2()
+   
+
+        rescale_transforms = [
+            A.LongestMaxSize(1024, p=1.0),
+            A.PadIfNeeded(
+                min_height=1024, 
+                min_width=1024, 
+                border_mode=cv2.BORDER_CONSTANT, 
+                value=[255, 255, 255], 
+                p=1.0
+            )
         ]
+
+        aug_transforms = []
         
         if self.augment:
-            transform = A.Compose([
-                A.HorizontalFlip(p=0.05), 
-                *common_transforms
-            ])
-        else:
-            transform = A.Compose(common_transforms)
+            
+            aug_transforms.append(A.HorizontalFlip(p=0.05))
+
+  
+        aug_transforms.extend([
+            A.Sequential(rescale_transforms, p=1.0),
+            A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            #A.Normalize(p=1.0),
+            ToTensorV2()
+        ])
+
+        transform = A.Compose(aug_transforms)
 
         transformed = transform(image=image, mask=mask)
+
         return transformed
-        
+
     def __getitem__(self, idx):
         img_path = self.valid_image_paths[idx] 
         image = cv2.imread(img_path)
@@ -137,6 +153,7 @@ class RunwayDataset(Dataset):
             plt.subplot(1,2,2)
             plt.imshow(mask.squeeze(0).cpu().numpy())  # Mask
             plt.show()
+            plt.savefig('image_mask.png')
 
         return {
             'image': image, 

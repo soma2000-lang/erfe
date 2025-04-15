@@ -1,7 +1,7 @@
 import torch
 class EarlyStopping:
  
-    def __init__(self, patience=10, min_delta=0, verbose=False, path='checkpoint.pt'):
+    def __init__(self, patience=20, min_delta=0, verbose=False, path='checkpoint.pt'):
       
         self.patience = patience
         self.min_delta = min_delta

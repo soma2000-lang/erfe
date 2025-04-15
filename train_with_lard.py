@@ -166,7 +166,7 @@ def train(model, dataloader, device, optimizer, criterion):
         
 
 #     print("jaccard",jaccard)
-def calculate_jaccard_index(seg_pred, seg_true, threshold=0.1, smooth=1e-6):
+def calculate_jaccard_index(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
     """
     Calculate Jaccard index (IoU) with thresholding for binary segmentation.
     """
@@ -180,7 +180,7 @@ def calculate_jaccard_index(seg_pred, seg_true, threshold=0.1, smooth=1e-6):
     jaccard = (intersection + smooth) / (union + smooth)
     
     return jaccard.item()
-def calculate_dice_coefficient(seg_pred, seg_true, threshold=0.1, smooth=1e-6):
+def calculate_dice_coefficient(seg_pred, seg_true, threshold=0.5, smooth=1e-6):
     """
     Calculate Dice coefficient with thresholding for binary segmentation.
     """
@@ -194,7 +194,7 @@ def calculate_dice_coefficient(seg_pred, seg_true, threshold=0.1, smooth=1e-6):
     return dice.item()
 
 
-def eval(model, dataloader, device, criterion, threshold=0.1, smooth=1e-6):
+def eval(model, dataloader, device, criterion, threshold=0.5, smooth=1e-6):
     model.eval()
     running_loss = 0
     counter = 0
@@ -223,7 +223,7 @@ def eval(model, dataloader, device, criterion, threshold=0.1, smooth=1e-6):
                     continue
             
  
-            seg_pred = torch.sigmoid(seg_pred)
+            #seg_pred = torch.sigmoid(seg_pred)
             seg_pred = seg_pred.to(device)
             
     
@@ -309,7 +309,7 @@ def calculate_global_jaccard(predictions, targets, smooth=1e-6):
     jaccard = (intersection + smooth) / (union + smooth)
     return jaccard.item()
 def training_loop(epochs, model, train_loader, val_loader, device, optimizer, criterion, scheduler=None, 
-               patience=10, min_delta=0.001):
+               patience=20, min_delta=0.001):
 
     train_loss_history = []
     valid_loss_history = []
@@ -317,7 +317,7 @@ def training_loop(epochs, model, train_loader, val_loader, device, optimizer, cr
     iou_history = []
     best_checkpoint = None
     
-    checkpoint_dir = 'Selective_checkpoint'
+    checkpoint_dir = 'last_try'
     folder_check(checkpoint_dir)
     
 

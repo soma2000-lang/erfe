@@ -42,6 +42,7 @@ def get_onnx_session(onnx_model_path, use_gpu=True):
     
     return session
 
+
 def preprocess_image(image, max_size=1024):
     """Preprocess image according to the model requirements"""
     aug_transforms = []
@@ -57,7 +58,7 @@ def preprocess_image(image, max_size=1024):
             )
         )
     aug_transforms.append(A.Sequential(rescale_transforms, p=1.0))
-    aug_transforms.append( A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
+    aug_transforms.append(A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
     
     transform = A.Compose(aug_transforms)
     transformed = transform(image=image)
@@ -99,7 +100,7 @@ def run_batch_inference(session, batch_images):
     
     return outputs[0], inference_time
 
-def postprocess_masks(mask_logits, threshold=0.1, apply_sigmoid: bool = False):
+def postprocess_masks(mask_logits, threshold=0.5, apply_sigmoid: bool = False):
     """Apply sigmoid and threshold to get binary masks for a batch"""
     if apply_sigmoid:
         sigmoid_masks = 1 / (1 + np.exp(-mask_logits))
@@ -290,7 +291,7 @@ def xywh_to_xyxy(xywh):
     
     return xyxy[-1]
 
-def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batch_size=8, threshold=0.1, use_gpu=True, save_pred: int = 50, apply_sigmoid:bool = True):
+def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batch_size=8, threshold=0.5, use_gpu=True, save_pred: int = 50, apply_sigmoid:bool = True):
     """Process all images in dataset and evaluate with batch processing"""
     results = []
     total_time = 0
@@ -448,13 +449,13 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
 
 # Main execution
 def main():
-    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model14.onnx"
-    input_image_dir = "/home/AD/smajumder/bars/bars_test_coco/Test/data"
-    test_json_path = "/home/AD/smajumder/bars/bars_test_coco/Test/annotations.json"
-    output_dir = "/home/AD/smajumder/bars_test"
-    batch_size = 4
-    apply_sigmoid = True
-    use_gpu = False
+    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model13.onnx"
+    input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/images"
+    test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/annotations.json"
+    output_dir = "/home/AD/smajumder/lardss"
+    batch_size = 4 # Adjust based on your GPU memory
+    apply_sigmoid = True # in case model is returning logits.
+    use_gpu = True  # Set to False to force CPU execution
     save_pred = 10
     
     # Create output directory

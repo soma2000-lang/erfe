@@ -57,32 +57,30 @@ def preprocess_image(image, max_size=1024):
             )
         )
     aug_transforms.append(A.Sequential(rescale_transforms, p=1.0))
-    aug_transforms.append( A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
+    aug_transforms.append(A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]))
     
     transform = A.Compose(aug_transforms)
     transformed = transform(image=image)
     
     # Keep track of scaling and padding for reverse mapping
-    scale = max(image.shape[0], image.shape[1]) / max_size
-    pad_h = (max_size - image.shape[0] / scale) / 2
-    pad_w = (max_size - image.shape[1] / scale) / 2
+
     
-    return transformed["image"], (scale, pad_h, pad_w)
+    return transformed["image"]
 
 def batch_preprocess_images(images, max_size=1024):
     """Preprocess a batch of images"""
     processed_images = []
-    scale_infos = []
+
     
     for image in images:
         processed_img, scale_info = preprocess_image(image, max_size)
         processed_images.append(processed_img)
-        scale_infos.append(scale_info)
+
     
     # Stack images into a batch
     batch_images = np.stack(processed_images, axis=0)
     
-    return batch_images, scale_infos
+    return batch_images
 
 def run_batch_inference(session, batch_images):
     """Run inference on a batch of images"""
@@ -99,37 +97,48 @@ def run_batch_inference(session, batch_images):
     
     return outputs[0], inference_time
 
-def postprocess_masks(mask_logits, threshold=0.1, apply_sigmoid: bool = False):
+def postprocess_masks(mask_logits, threshold=0.5, apply_sigmoid: bool = False):
     """Apply sigmoid and threshold to get binary masks for a batch"""
     if apply_sigmoid:
         sigmoid_masks = 1 / (1 + np.exp(-mask_logits))
     else:
         sigmoid_masks = mask_logits
     binary_masks = (sigmoid_masks > threshold).astype(np.uint8)
+    plt.imshow(sigmoid_masks[0, 0])
+    plt.title("Sigmoid Mask")
+    plt.show()
+    plt.savefig('Sigmoid Mask.png')
+
+    plt.imshow(binary_masks[0], cmap='gray')
+
+    plt.title("Thresholded Binary Mask")
+    plt.savefig('Thrsholded_binary_Mask.png')
+    plt.show()
+
     return binary_masks[:, 0]  # Remove channel dimension but keep batch
 
-def map_to_original_sizes(masks, original_shapes, scale_infos):
-    """Map masks back to original image sizes"""
-    original_masks = []
+# def map_to_original_sizes(masks, original_shapes, scale_infos):
+#     """Map masks back to original image sizes"""
+#     original_masks = []
     
-    for i, mask in enumerate(masks):
-        scale, pad_h, pad_w = scale_infos[i]
-        h, w = original_shapes[i][:2]
+#     for i, mask in enumerate(masks):
+#         scale, pad_h, pad_w = scale_infos[i]
+#         h, w = original_shapes[i][:2]
         
-        # Calculate region of interest in the padded image
-        roi_h_start = int(pad_h)
-        roi_h_end = int(1024 - pad_h)
-        roi_w_start = int(pad_w)
-        roi_w_end = int(1024 - pad_w)
+#         # Calculate region of interest in the padded image
+#         roi_h_start = int(pad_h)
+#         roi_h_end = int(1024 - pad_h)
+#         roi_w_start = int(pad_w)
+#         roi_w_end = int(1024 - pad_w)
         
-        # Crop the relevant part of the mask
-        cropped_mask = mask[roi_h_start:roi_h_end, roi_w_start:roi_w_end]
+#         # Crop the relevant part of the mask
+#         cropped_mask = mask[roi_h_start:roi_h_end, roi_w_start:roi_w_end]
         
-        # Resize to original dimensions
-        original_sized_mask = cv2.resize(cropped_mask, (w, h), interpolation=cv2.INTER_NEAREST)
-        original_masks.append(original_sized_mask)
+#         # Resize to original dimensions
+#         original_sized_mask = cv2.resize(cropped_mask, (w, h), interpolation=cv2.INTER_NEAREST)
+#         original_masks.append(original_sized_mask)
     
-    return original_masks
+#     return original_masks
 
 def extract_contours(mask, min_area=0):
     """Extract contours from the mask"""
@@ -256,9 +265,9 @@ def evaluate_coco(pred_results, gt_json_path):
     coco_eval.summarize()
     
     # Get metrics
-    ap50 = coco_eval.stats[1]  # AP at IoU=0.50
+    ap50 = coco_eval.stats[1]  # AP at IoU=0.10
     ap75 = coco_eval.stats[2]  # AP at IoU=0.75
-    mAP = coco_eval.stats[0]   # AP at IoU=0.50:0.95
+    mAP = coco_eval.stats[0]   # AP at IoU=0.10:0.95
     
     return {
         'AP@50': ap50,
@@ -290,7 +299,7 @@ def xywh_to_xyxy(xywh):
     
     return xyxy[-1]
 
-def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batch_size=8, threshold=0.1, use_gpu=True, save_pred: int = 50, apply_sigmoid:bool = True):
+def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batch_size=8, threshold=0.5, use_gpu=True, save_pred: int = 50, apply_sigmoid:bool = True):
     """Process all images in dataset and evaluate with batch processing"""
     results = []
     total_time = 0
@@ -385,15 +394,16 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
         pbar.update(current_batch_size)
         
         # Postprocess batch
-        binary_masks_batch = postprocess_masks(mask_logits_batch, threshold,apply_sigmoid=apply_sigmoid)
-        original_masks_batch = map_to_original_sizes(binary_masks_batch, batch_shapes, scale_infos)
+        binary_masks_batch = postprocess_masks(mask_logits_batch, threshold, apply_sigmoid=apply_sigmoid)
         
         # Process each result in the batch
         for i, (image_id, image, original_mask, mask_logit, file_name) in enumerate(zip(
-                batch_ids, batch_images, original_masks_batch, mask_logits_batch, batch_file_names)):
+                batch_ids, batch_images, binary_masks_batch, mask_logits_batch, batch_file_names)):
             
             # Extract contours and shapes
             contours = extract_contours(original_mask)
+            print(f"Contours found: {len(contours)} for image {file_name}")
+
             
             # Calculate scores for contours
             scores = []
@@ -404,8 +414,8 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
                     sigmoid_mask = 1 / (1 + np.exp(-mask_logit[0]))
                 else:
                     sigmoid_mask = mask_logit
-                mapped_sigmoid = map_to_original_sizes([sigmoid_mask], [batch_shapes[i]], [scale_infos[i]])[0]
-                mean_score = np.mean(mapped_sigmoid[mask > 0]) if np.sum(mask) > 0 else 0
+                # mapped_sigmoid = map_to_original_sizes([sigmoid_mask], [batch_shapes[i]], [scale_infos[i]])[0]
+                mean_score = np.mean(sigmoid_mask[mask > 0]) if np.sum(mask) > 0 else 0
                 scores.append(mean_score)
             
             
@@ -448,13 +458,13 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
 
 # Main execution
 def main():
-    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model14.onnx"
-    input_image_dir = "/home/AD/smajumder/bars/bars_test_coco/Test/data"
-    test_json_path = "/home/AD/smajumder/bars/bars_test_coco/Test/annotations.json"
-    output_dir = "/home/AD/smajumder/bars_test"
+    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model13.onnx"
+    input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/images"
+    test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/annotations.json"
+    output_dir = "/home/AD/smajumder/lards_tests"
     batch_size = 4
     apply_sigmoid = True
-    use_gpu = False
+    use_gpu = True  
     save_pred = 10
     
     # Create output directory

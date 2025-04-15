@@ -15,19 +15,19 @@ from tqdm import tqdm
 import onnx
 from glob import glob 
 
-def get_onnx_session(onnx_model_path, use_gpu=True):
+def get_onnx_session(onnx_model_path, use_gpu=True):  # gpu might gg
     """Create an optimized ONNX runtime session with GPU support if available"""
     # Check if GPU is available
     providers = []
-    print(onnxruntime.get_available_providers())
+    # print(onnxruntime.get_available_providers())
     if use_gpu and 'CUDAExecutionProvider' in onnxruntime.get_available_providers():
         providers.append('CUDAExecutionProvider')
-        print("Using CUDA for inference")
+        # print("Using CUDA for inference")
     else:
         if use_gpu:
             print("CUDA requested but not available. Falling back to CPU.")
         providers.append('CPUExecutionProvider')
-        print("Using CPU for inference")
+        # print("Using CPU for inference")
     
     # Set session options for better performance
     session_options = onnxruntime.SessionOptions()
@@ -62,34 +62,35 @@ def preprocess_image(image, max_size=1024):
     transform = A.Compose(aug_transforms)
     transformed = transform(image=image)
     
-    # Keep track of scaling and padding for reverse mapping
-    scale = max(image.shape[0], image.shape[1]) / max_size
-    pad_h = (max_size - image.shape[0] / scale) / 2
-    pad_w = (max_size - image.shape[1] / scale) / 2
+   
     
-    return transformed["image"], (scale, pad_h, pad_w)
-
+    return transformed["image"]
 def batch_preprocess_images(images, max_size=1024):
     """Preprocess a batch of images"""
     processed_images = []
-    scale_infos = []
+  
     
     for image in images:
-        processed_img, scale_info = preprocess_image(image, max_size)
+        processed_img = preprocess_image(image, max_size)
         processed_images.append(processed_img)
-        scale_infos.append(scale_info)
-    
+       
     # Stack images into a batch
     batch_images = np.stack(processed_images, axis=0)
     
-    return batch_images, scale_infos
+    return batch_images
+
+
+    
 
 def run_batch_inference(session, batch_images):
     """Run inference on a batch of images"""
     input_name = session.get_inputs()[0].name
-    output_name = session.get_outputs()[0].name
     
-    # Prepare input (move channel dimension to correct position)
+    # Get all output names to see what the model is actually returning
+    output_names = [output.name for output in session.get_outputs()]
+    # print(f"Model output names: {output_names}")
+    
+    # Prepare input
     input_data = batch_images.transpose(0, 3, 1, 2).astype(np.float32)
     
     # Run inference
@@ -97,70 +98,61 @@ def run_batch_inference(session, batch_images):
     outputs = session.run(None, {input_name: input_data})
     inference_time = time.time() - start_time
     
+    # Debug all outputs
+    for i, output in enumerate(outputs):
+        print(f"Output {i} shape: {output.shape}, min: {output.min()}, max: {output.max()}")
+    
     return outputs[0], inference_time
 
-def postprocess_masks(mask_logits, threshold=0.1, apply_sigmoid: bool = False):
+# mask logits se mask
+def postprocess_masks(mask_logits, threshold=0.49, apply_sigmoid: bool = False):
     """Apply sigmoid and threshold to get binary masks for a batch"""
     if apply_sigmoid:
         sigmoid_masks = 1 / (1 + np.exp(-mask_logits))
     else:
         sigmoid_masks = mask_logits
-    binary_masks = (sigmoid_masks > threshold).astype(np.uint8)
-    return binary_masks[:, 0]  # Remove channel dimension but keep batch
-
-def map_to_original_sizes(masks, original_shapes, scale_infos):
-    """Map masks back to original image sizes"""
-    original_masks = []
+        
+   
+    print("sigmoid masks",sigmoid_masks)
+    # Try using channel 1 instead of channel 0
+    binary_masks = (sigmoid_masks[:, 1] > threshold).astype(np.uint8)
     
-    for i, mask in enumerate(masks):
-        scale, pad_h, pad_w = scale_infos[i]
-        h, w = original_shapes[i][:2]
-        
-        # Calculate region of interest in the padded image
-        roi_h_start = int(pad_h)
-        roi_h_end = int(1024 - pad_h)
-        roi_w_start = int(pad_w)
-        roi_w_end = int(1024 - pad_w)
-        
-        # Crop the relevant part of the mask
-        cropped_mask = mask[roi_h_start:roi_h_end, roi_w_start:roi_w_end]
-        
-        # Resize to original dimensions
-        original_sized_mask = cv2.resize(cropped_mask, (w, h), interpolation=cv2.INTER_NEAREST)
-        original_masks.append(original_sized_mask)
+    print("binary masks should get [0,1]",binary_masks) # s
     
-    return original_masks
-
-def extract_contours(mask, min_area=0):
+    return binary_masks  
+def extract_contours(mask, min_area=0): # getting contours from the binary masks
     """Extract contours from the mask"""
-    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+ 
+    mask_uint8 = mask.astype(np.uint8)# OpenCV compatibility: Many
+    
+    # # print mask statistics for debugging
+    # print(f"Mask shape: {mask_uint8.shape}, dtype: {mask_uint8.dtype}")
+    # print(f"Mask values: min={mask_uint8.min()}, max={mask_uint8.max()}, sum={np.sum(mask_uint8)}")
+    
+    # If the mask is empty, return empty contours
+    if np.sum(mask_uint8) == 0:
+        # print("Warning: Empty mask!")
+        return []
+        
+    # Find contours
+    contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
     # Filter small contours
-    # max_contour_area = 0.0
-    # max_contour = 0
-    # for cnt in contours:
-    #     contour_area = cv2.contourArea(cnt)
-    #     if contour_area > max_contour_area and contour_area > min_area:
-    #         max_contour_area = cv2.contourArea(cnt)
-    #         max_contour = cnt
-
-    contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_area]
-    return contours
-
-    # if max_contour_area != 0.0:
-    #     return [max_contour]
-    # return []
-
-def get_quadrilateral(contour):
+    filtered_contours = [cnt for cnt in contours if cv2.contourArea(cnt) > min_area]
+    
+    
+    return filtered_contours
+def get_quadrilateral( filtered_contours): # we should get the mask as in the gt, coordianes wale plotting type
     """Extract a quadrilateral from the contour"""
     # Get minimum area rectangle
-    rect = cv2.minAreaRect(contour)
+    rect = cv2.minAreaRect(filtered_contours)
     box = cv2.boxPoints(rect)
     box = np.int0(box)
     return box
 
-def get_bbox(contour):
+def get_bbox(filtered_contour): # should cover the runaway
     """Get bounding box from contour"""
-    x, y, w, h = cv2.boundingRect(contour)
+    x, y, w, h = cv2.boundingRect(filtered_contour)
     return [x, y, x + w, y + h]  # [x1, y1, x2, y2] format
 
 def calculate_model_params(onnx_model):
@@ -176,15 +168,20 @@ def calculate_model_params(onnx_model):
 
     return total_params
 
+
 def visualize_predictions(image, gt_bboxes, mask, quad, bbox, save_path=None):
     """Visualize and optionally save predictions"""
+    # First, resize the mask to match the image dimensions
+    if mask.shape[:2] != image.shape[:2]:
+        mask = cv2.resize(mask, (image.shape[1], image.shape[0]), interpolation=cv2.INTER_NEAREST)
+    print("shape of mask while visualization",mask.shape)
     fig, ax = plt.subplots(1, 3, figsize=(18, 6))
     
     gt_image = image.copy()
     # Draw all ground truth boxes in a distinct color
     for gt_bbox in gt_bboxes:
         x1, y1, x2, y2 = gt_bbox
-        cv2.rectangle(gt_image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Blue for gt
+        cv2.rectangle(gt_image, (x1, y1), (x2, y2), (0, 255, 0), 2)  # Green for gt
     ax[0].imshow(cv2.cvtColor(gt_image, cv2.COLOR_BGR2RGB))
     ax[0].set_title('Original Image')
     ax[0].axis('off')
@@ -198,7 +195,7 @@ def visualize_predictions(image, gt_bboxes, mask, quad, bbox, save_path=None):
     
     # Quadrilateral and bbox
     result = image.copy()
-    cv2.drawContours(result, [quad], 0, (0, 0, 255), 2)  # Red for quadrilateral
+    cv2.drawContours(result, [quad], 0, (0, 0, 255), 2)  # Red for quadrilateral we are getting quad from process dataset fuction
     x1, y1, x2, y2 = bbox
     cv2.rectangle(result, (x1, y1), (x2, y2), (255, 0, 0), 2)  # Blue for bbox
     ax[2].imshow(cv2.cvtColor(result, cv2.COLOR_BGR2RGB))
@@ -213,11 +210,11 @@ def visualize_predictions(image, gt_bboxes, mask, quad, bbox, save_path=None):
     else:
         plt.show()
 
-def convert_to_coco_format(image_id, contours, scores, category_id=1):
+def convert_to_coco_format(image_id, filtered_contours, scores, category_id=1):
     """Convert predictions to COCO format for evaluation"""
     results = []
     
-    for i, contour in enumerate(contours):
+    for i, contour in enumerate(filtered_contours):
         # Get segmentation in COCO format
         segmentation = []
         for point in contour.reshape(-1, 2):
@@ -237,6 +234,25 @@ def convert_to_coco_format(image_id, contours, scores, category_id=1):
         results.append(result)
     
     return results
+
+def dice_coefficient(y_true, y_pred):
+    """
+    Calculate Dice coefficient between two binary masks
+    
+    Dice = 2*|X∩Y| / (|X|+|Y|)
+    """
+    intersection = np.sum(y_true * y_pred)
+    return (2. * intersection) / (np.sum(y_true) + np.sum(y_pred) + 1e-8)
+
+def jaccard_index(y_true, y_pred):
+    """
+    Calculate Jaccard index (IoU) between two binary masks
+    
+    Jaccard = |X∩Y| / |X∪Y| = |X∩Y| / (|X|+|Y|-|X∩Y|)
+    """
+    intersection = np.sum(y_true * y_pred)
+    union = np.sum(y_true) + np.sum(y_pred) - intersection
+    return intersection / (union + 1e-8)
 
 def evaluate_coco(pred_results, gt_json_path):
     """Evaluate predictions using COCO metrics"""
@@ -289,8 +305,33 @@ def xywh_to_xyxy(xywh):
         xyxy.append((int(x1), int(y1), int(x2), int(y2)))
     
     return xyxy[-1]
+def create_gt_mask_from_annotations(annots, height, width):
+    """Create ground truth mask from COCO annotations"""
+    mask = np.zeros((height, width), dtype=np.uint8)
+    
+    for annot in annots:
+        # Get segmentation points
+        if 'segmentation' in annot and len(annot['segmentation']) > 0:
+            # Handle RLE or polygon format
+            if isinstance(annot['segmentation'], list):
+                # Polygon format
+                for seg in annot['segmentation']:
+                    # Convert flat list to points array
+                    points = np.array(seg).reshape(-1, 2).astype(np.int32)
+                    cv2.fillPoly(mask, [points], 1)
+            else:
+                # RLE format (would need pycocotools.mask for this)
+                # For simplicity, we'll use the bbox in this case
+                x, y, w, h = annot['bbox']
+                cv2.rectangle(mask, (int(x), int(y)), (int(x+w), int(y+h)), 1, -1)
+        else:
+            # Fallback to bbox if segmentation is not available
+            x, y, w, h = annot['bbox']
+            cv2.rectangle(mask, (int(x), int(y)), (int(x+w), int(y+h)), 1, -1)
+    
+    return mask
 
-def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batch_size=8, threshold=0.1, use_gpu=True, save_pred: int = 50, apply_sigmoid:bool = True):
+def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batch_size=4, threshold=0.49, use_gpu=True, save_pred: int = 50, apply_sigmoid:bool = True):
     """Process all images in dataset and evaluate with batch processing"""
     results = []
     total_time = 0
@@ -350,7 +391,7 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
             
             # Check if filename exists in mapping
             if file_name not in image_gt2_id:
-                print(f"Warning: File {file_name} not found in ground truth")
+                # print(f"Warning: File {file_name} not found in ground truth")
                 continue
                 
             # Get image ID
@@ -360,19 +401,18 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
             # Load image
             image = cv2.imread(img_path)
             if image is None:
-                print(f"Warning: Could not load image {img_path}")
+                # print(f"Warning: Could not load image {img_path}")
                 continue
                 
             image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
             batch_images.append(image)
             batch_shapes.append(image.shape)
-        
-        # Skip if no valid images
+
         if not batch_images:
             continue
             
         # Preprocess batch
-        processed_batch, scale_infos = batch_preprocess_images(batch_images)
+        processed_batch = batch_preprocess_images(batch_images)
         
         # Run inference on batch
         mask_logits_batch, inference_time = run_batch_inference(session, processed_batch)
@@ -386,31 +426,78 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
         
         # Postprocess batch
         binary_masks_batch = postprocess_masks(mask_logits_batch, threshold, apply_sigmoid=apply_sigmoid)
-        original_masks_batch = map_to_original_sizes(binary_masks_batch, batch_shapes, scale_infos)
-        
+        # original_masks_batch = map_to_original_sizes(binary_masks_batch, batch_shapes, scale_infos)
+        dice_scores = []
+        jaccard_scores = []
         # Process each result in the batch
-        for i, (image_id, image, original_mask, mask_logit, file_name) in enumerate(zip(
-                batch_ids, batch_images, original_masks_batch, mask_logits_batch, batch_file_names)):
+        for i, (image_id, image, binary_mask,mask_logit, file_name) in enumerate(zip(
+                batch_ids, batch_images,binary_masks_batch, mask_logits_batch, batch_file_names)):
             
             # Extract contours and shapes
-            contours = extract_contours(original_mask)
             
+            # print(f"Contours found: {len(contours)} for image {file_name}")
+           
+            contours = extract_contours(binary_mask)
+            pred_mask = np.zeros(image.shape[:2], dtype=np.uint8)
+            for contour in contours:
+                cv2.drawContours(pred_mask, [contour], 0, 1, -1)
+            
+            # Create ground truth mask
+            if image_id in image_to_annots:
+                gt_annots = image_to_annots[image_id]
+                gt_mask = create_gt_mask_from_annotations(gt_annots, image.shape[0], image.shape[1])
+                
+                # Calculate Dice and Jaccard metrics
+                dice = dice_coefficient(gt_mask, pred_mask)
+                jaccard = jaccard_index(gt_mask, pred_mask)
+                
+                dice_scores.append(dice)
+                jaccard_scores.append(jaccard)
+                
+                # Debug output for individual image metrics
+                print(f"Image {file_name}: Dice = {dice:.4f}, Jaccard = {jaccard:.4f}")
+            
+                plt.figure(figsize=(10, 5))
+                plt.subplot(1, 2, 1)
+                plt.imshow(batch_images[i])
+                plt.title(f"Original Image {i}")
+                
+                
+            # Calculate scores for contours
+            # scores = []
+            # for contour in contours:
+            #     mask = np.zeros(batch_shapes[i][:2], dtype=np.uint8)
+            #     cv2.drawContours(mask, [contour], 0, 1, -1)
+            #     if apply_sigmoid:
+            #         sigmoid_mask = 1 / (1 + np.exp(-mask_logit[0]))
+            #     else:
+            #         sigmoid_mask = mask_logit
+            #    # mapped_sigmoid = map_to_original_sizes([sigmoid_mask], [batch_shapes[i]], [scale_infos[i]])[0]
+            #     mean_score = np.mean(sigmoid_mask[mask > 0]) if np.sum(mask) > 0 else 0
+            #     scores.append(mean_score)
             # Calculate scores for contours
             scores = []
             for contour in contours:
-                mask = np.zeros(batch_shapes[i][:2], dtype=np.uint8)
-                cv2.drawContours(mask, [contour], 0, 1, -1)
+                # Create mask in original dimensions
+                orig_mask = np.zeros(batch_shapes[i][:2], dtype=np.uint8)
+                cv2.drawContours(orig_mask, [contour], 0, 1, -1)
+                
+                # Resize to model dimensions (1024x1024)
+                model_mask = cv2.resize(orig_mask, (1024, 1024), interpolation=cv2.INTER_NEAREST)
+                
+                # Apply sigmoid if needed (using channel 1 as we determined earlier)
                 if apply_sigmoid:
-                    sigmoid_mask = 1 / (1 + np.exp(-mask_logit[0]))
+                    sigmoid_mask = 1 / (1 + np.exp(-mask_logit[1]))
                 else:
-                    sigmoid_mask = mask_logit
-                mapped_sigmoid = map_to_original_sizes([sigmoid_mask], [batch_shapes[i]], [scale_infos[i]])[0]
-                mean_score = np.mean(mapped_sigmoid[mask > 0]) if np.sum(mask) > 0 else 0
+                    sigmoid_mask = mask_logit[1]
+                
+                # Use properly sized mask for indexing
+                mean_score = np.mean(sigmoid_mask[model_mask > 0]) if np.sum(model_mask) > 0 else 0
                 scores.append(mean_score)
             
             
             # Get COCO format results
-            coco_results = convert_to_coco_format(image_id, contours, scores)
+            coco_results = convert_to_coco_format(image_id,contours, scores)
             results.extend(coco_results)
             
             # Visualize a few samples
@@ -424,7 +511,7 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
                         gt_bboxes.append((int(x), int(y), int(x+w), int(y+h)))
                 
                 # Debug output
-                print(f"Image: {file_name}, ID: {image_id}, GT boxes: {len(gt_bboxes)}")
+                # print(f"Image: {file_name}, ID: {image_id}, GT boxes: {len(gt_bboxes)}")
                 
                 for j, contour in enumerate(contours):
                     quad = get_quadrilateral(contour)
@@ -432,7 +519,7 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
                     save_path = f"{output_dir}/sample_{image_id}_{j}.png"
                     
                     # Using the image with GT already drawn
-                    visualize_predictions(image, gt_bboxes, original_mask, quad, bbox, save_path)
+                    visualize_predictions(image, gt_bboxes, binary_mask, quad, bbox, save_path)
     
     pbar.close()
     
@@ -443,15 +530,19 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
     metrics = evaluate_coco(results, gt_json_path)
     metrics['FPS'] = fps
     metrics['Parameters'] = num_params
+    mean_dice = np.mean(dice_scores) if dice_scores else 0
+    mean_jaccard = np.mean(jaccard_scores) if jaccard_scores else 0
+    metrics['Dice'] = mean_dice
+    metrics['Jaccard'] = mean_jaccard
     
     return metrics, results
 
 # Main execution
 def main():
-    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model7.onnx"
+    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model13.onnx"
     input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/images"
     test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/annotations.json"
-    output_dir = "/home/AD/smajumder/lards_test_exp"
+    output_dir = "/home/AD/smajumder/lards_tests"
     batch_size = 4
     apply_sigmoid = True
     use_gpu = True  
@@ -460,8 +551,8 @@ def main():
     # Create output directory
     os.makedirs(output_dir, exist_ok=True)
     
-    # Print available providers for debugging
-    print(f"Available ONNX Runtime providers: {onnxruntime.get_available_providers()}")
+    # # print available providers for debugging
+    # print(f"Available ONNX Runtime providers: {onnxruntime.get_available_providers()}")
     
     # Get image paths from COCO annotation file
     coco_gt = COCO(test_json_path)
@@ -470,7 +561,7 @@ def main():
     image_paths = [f"{input_image_dir}/{img['file_name']}" for img in images]
     # image_paths = glob(f"/home/AD/sthapa/grid_aero/runway_dataset/merged/data/*")
     
-    print(f"Processing {len(image_paths)} images with batch size {batch_size}")
+    # print(f"Processing {len(image_paths)} images with batch size {batch_size}")
     
     # Process dataset
     metrics, results = process_dataset(
@@ -483,11 +574,11 @@ def main():
         save_pred=save_pred,
         apply_sigmoid=apply_sigmoid
     )
-    
-    # Print metrics
     print(f"\nModel Performance Metrics:")
     print(f"AP@50: {metrics['AP@50']:.4f}")
     print(f"AP@75: {metrics['AP@75']:.4f}")
+    print(f"Dice Coefficient: {metrics['Dice']:.4f}")
+    print(f"Jaccard Index (IoU): {metrics['Jaccard']:.4f}")
     print(f"mAP: {metrics['mAP']:.4f}")
     print(f"FPS: {metrics['FPS']:.2f}")
     print(f"Parameters: {metrics['Parameters']:,}")
@@ -495,7 +586,8 @@ def main():
     # Save results
     # with open(f"{output_dir}/results.json", 'w') as f:
     #     json.dump(results, f)
-    
+
+
     with open(f"{output_dir}/metrics.json", 'w') as f:
         json.dump(metrics, f)
 
