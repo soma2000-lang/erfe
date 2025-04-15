@@ -106,8 +106,13 @@ def postprocess_masks(mask_logits, threshold=0.5, apply_sigmoid: bool = False):
         sigmoid_masks = 1 / (1 + np.exp(-mask_logits))
     else:
         sigmoid_masks = mask_logits
-    binary_masks = (sigmoid_masks > threshold).astype(np.uint8)
-    return binary_masks[:, 0]  # Remove channel dimension but keep batch
+    
+    print("sigmoid masks",sigmoid_masks)
+    # Trying using channel 1 instead of channel 0
+    binary_masks = (sigmoid_masks[:, 1] > threshold).astype(np.uint8)
+    
+    print("binary masks should get [0,1]",binary_masks) # s
+    return binary_masks # Remove channel dimension but keep batch
 
 def map_to_original_sizes(masks, original_shapes, scale_infos):
     """Map masks back to original image sizes"""
@@ -208,11 +213,10 @@ def visualize_predictions(image, gt_bboxes, mask, quad, bbox, save_path=None):
     
     plt.tight_layout()
     
-    if save_path:
-        plt.savefig(save_path)
-        plt.close()
-    else:
-        plt.show()
+    plt.savefig(save_path)
+  
+    plt.show()
+    plt.close()
 
 def convert_to_coco_format(image_id, contours, scores, category_id=1):
     """Convert predictions to COCO format for evaluation"""
@@ -226,6 +230,7 @@ def convert_to_coco_format(image_id, contours, scores, category_id=1):
         
         # Get bbox
         x, y, w, h = cv2.boundingRect(contour)
+        print("contours",contours)
         
         result = {
             'image_id': image_id,
@@ -235,17 +240,19 @@ def convert_to_coco_format(image_id, contours, scores, category_id=1):
             'score': float(scores[i]),
             'area': float(cv2.contourArea(contour))
         }
+        print("result",result)
         results.append(result)
     
     return results
 
 def evaluate_coco(pred_results, gt_json_path):
     """Evaluate predictions using COCO metrics"""
-    # Load ground truth
+   
     coco_gt = COCO(gt_json_path)
     
     # Create prediction dataset
     coco_dt = coco_gt.loadRes(pred_results)
+    print("coco_dt",coco_dt)
     
     # Initialize COCOeval
     coco_eval = COCOeval(coco_gt, coco_dt, 'segm')
@@ -395,6 +402,7 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
             
             # Extract contours and shapes
             contours = extract_contours(original_mask)
+            print(f"Contours found: {len(contours)} for image {file_name}")
             
             # Calculate scores for contours
             scores = []
@@ -413,6 +421,7 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
             # Get COCO format results
             coco_results = convert_to_coco_format(image_id, contours, scores)
             results.extend(coco_results)
+            print("coco_results",coco_results)
             
             # Visualize a few samples
             if len(results) < save_pred:  # Save first N samples
