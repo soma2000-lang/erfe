@@ -52,7 +52,7 @@ class RunwayDataset(Dataset):
         else:
             D = A - np.array([5, 0])
             trapezium = np.array([B, C, A, D])
-            
+             
         return trapezium
 
     def sort_points_clockwise(self, pts):

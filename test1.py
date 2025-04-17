@@ -100,25 +100,58 @@ def run_batch_inference(session, batch_images):
     
     return outputs[0], inference_time
 
+# def postprocess_masks(mask_logits, threshold=0.5, apply_sigmoid: bool = False):
+#     """Apply sigmoid and threshold to get binary masks for a batch"""
+#     if apply_sigmoid:
+#         sigmoid_masks = 1 / (1 + np.exp(-mask_logits[1]))
+#     else:
+#         sigmoid_masks = mask_logits
+    
+#     print("sigmoid masks",sigmoid_masks)
+#     # Trying using channel 1 instead of channel 0
+#     binary_masks = (sigmoid_masks[:, 1] > threshold).astype(np.uint8)
+    
+#     print("binary masks should get [0,1]",binary_masks) # s
+#     return binary_masks[:, 0]  # Remove channel dimension but keep batch
 def postprocess_masks(mask_logits, threshold=0.5, apply_sigmoid: bool = False):
     """Apply sigmoid and threshold to get binary masks for a batch"""
+    # Print shape to understand the structure
+    print(f"mask_logits shape: {mask_logits.shape}")
+    
     if apply_sigmoid:
+        # Apply sigmoid to the entire tensor
         sigmoid_masks = 1 / (1 + np.exp(-mask_logits))
     else:
         sigmoid_masks = mask_logits
     
-    print("sigmoid masks",sigmoid_masks)
-    # Trying using channel 1 instead of channel 0
-    binary_masks = (sigmoid_masks[:, 1] > threshold).astype(np.uint8)
-    
-    print("binary masks should get [0,1]",binary_masks) # s
-    return binary_masks # Remove channel dimension but keep batch
 
+    
+    # Check if we have a multi-channel output
+    if len(sigmoid_masks.shape) >= 3 and sigmoid_masks.shape[1] > 1:
+        # Multi-channel output - use channel 1 for foreground
+        binary_masks = (sigmoid_masks[:, 1] > threshold).astype(np.uint8)
+       
+    else:
+        # Single-channel output or already processed
+        # Ensure we're working with the correct dimensions
+        if len(sigmoid_masks.shape) >= 3:
+            binary_masks = (sigmoid_masks[:, 0] > threshold).astype(np.uint8)
+           
+        else:
+            # Handle the case where sigmoid_masks is already a 2D tensor
+            binary_masks = (sigmoid_masks > threshold).astype(np.uint8)
+         
+    print(f"binary_masks unique values: {np.unique(binary_masks)}")
+    return binary_masks
 def map_to_original_sizes(masks, original_shapes, scale_infos):
     """Map masks back to original image sizes"""
     original_masks = []
     
+    print(f"masks shape in map_to_original_sizes: {masks.shape if hasattr(masks, 'shape') else 'list with length ' + str(len(masks))}")
+    
     for i, mask in enumerate(masks):
+        print(f"Processing mask {i}, shape: {mask.shape if hasattr(mask, 'shape') else 'unknown'}")
+        
         scale, pad_h, pad_w = scale_infos[i]
         h, w = original_shapes[i][:2]
         
@@ -458,10 +491,10 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
 
 # Main execution
 def main():
-    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model13.onnx"
-    input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/images"
-    test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/annotations.json"
-    output_dir = "/home/AD/smajumder/lardss"
+    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model14.onnx"
+    input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/synthetic_test/images"
+    test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/synthetic_test/annotations.json"
+    output_dir = "/home/AD/smajumder/laras_synthetic"
     batch_size = 4 # Adjust based on your GPU memory
     apply_sigmoid = True # in case model is returning logits.
     use_gpu = True  # Set to False to force CPU execution

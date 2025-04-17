@@ -464,7 +464,7 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
 
 
 def main():
-    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model13.onnx"
+    onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model14.onnx"
     input_image_dir = "/home/AD/smajumder/bars/bars_test_coco/Test/data"
     test_json_path = "/home/AD/smajumder/bars/bars_test_coco/Test/annotations.json"
     output_dir = "/home/AD/smajumder/bars_tes"

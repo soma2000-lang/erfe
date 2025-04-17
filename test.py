@@ -540,8 +540,8 @@ def process_dataset(onnx_model_path, image_paths, gt_json_path, output_dir, batc
 # Main execution
 def main():
     onnx_model_path = "/home/AD/smajumder/gridaero/runway_segmentation_model13.onnx"
-    input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/images"
-    test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/real_nominal_test/annotations.json"
+    input_image_dir = "/home/AD/smajumder/lard_nominal/LARDS_test/synthetic_test/images"
+    test_json_path = "/home/AD/smajumder/lard_nominal/LARDS_test/synthetic_test/annotations.json"
     output_dir = "/home/AD/smajumder/lards_tests"
     batch_size = 4
     apply_sigmoid = True
