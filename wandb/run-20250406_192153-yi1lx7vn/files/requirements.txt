@@ -61,7 +61,7 @@ pip==25.0
 platformdirs==4.2.2
 platformdirs==4.3.7
 ply==3.11
-protobuf==4.25.3
+protobuf==4.25.8
 psutil==5.9.1
 pycparser==2.22
 pydantic==2.10.3
